@@ -1,0 +1,189 @@
+import math
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
+
+from options_scanner import (
+    calculate_greeks,
+    fetch_options_chain,
+    find_cheapest_options,
+    score_option,
+)
+
+
+class TestCalculateGreeks:
+    """Test Black-Scholes Greeks against known values."""
+
+    def test_atm_call_delta_near_half(self):
+        # ATM call should have delta ~ 0.5
+        greeks = calculate_greeks(S=100, K=100, T=1.0, r=0.04, sigma=0.20, option_type="call")
+        assert 0.45 < greeks["delta"] < 0.65
+
+    def test_atm_put_delta_near_negative_half(self):
+        greeks = calculate_greeks(S=100, K=100, T=1.0, r=0.04, sigma=0.20, option_type="put")
+        assert -0.55 < greeks["delta"] < -0.35
+
+    def test_deep_itm_call_delta_near_one(self):
+        greeks = calculate_greeks(S=200, K=100, T=0.5, r=0.04, sigma=0.20, option_type="call")
+        assert greeks["delta"] > 0.95
+
+    def test_deep_otm_call_delta_near_zero(self):
+        greeks = calculate_greeks(S=50, K=200, T=0.1, r=0.04, sigma=0.20, option_type="call")
+        assert greeks["delta"] < 0.05
+
+    def test_gamma_positive(self):
+        greeks = calculate_greeks(S=100, K=100, T=0.5, r=0.04, sigma=0.25, option_type="call")
+        assert greeks["gamma"] > 0
+
+    def test_gamma_same_for_call_and_put(self):
+        call = calculate_greeks(S=100, K=100, T=0.5, r=0.04, sigma=0.25, option_type="call")
+        put = calculate_greeks(S=100, K=100, T=0.5, r=0.04, sigma=0.25, option_type="put")
+        assert abs(call["gamma"] - put["gamma"]) < 1e-10
+
+    def test_vega_positive(self):
+        greeks = calculate_greeks(S=100, K=100, T=0.5, r=0.04, sigma=0.25, option_type="call")
+        assert greeks["vega"] > 0
+
+    def test_theta_negative_for_call(self):
+        greeks = calculate_greeks(S=100, K=100, T=0.5, r=0.04, sigma=0.25, option_type="call")
+        assert greeks["theta"] < 0
+
+    def test_zero_time_returns_zeros(self):
+        greeks = calculate_greeks(S=100, K=100, T=0, r=0.04, sigma=0.25, option_type="call")
+        assert greeks == {"delta": 0, "gamma": 0, "theta": 0, "vega": 0}
+
+    def test_zero_volatility_returns_zeros(self):
+        greeks = calculate_greeks(S=100, K=100, T=0.5, r=0.04, sigma=0, option_type="call")
+        assert greeks == {"delta": 0, "gamma": 0, "theta": 0, "vega": 0}
+
+    def test_known_black_scholes_values(self):
+        # S=100, K=100, T=1, r=5%, sigma=20% -> well-known BS values
+        greeks = calculate_greeks(S=100, K=100, T=1.0, r=0.05, sigma=0.20, option_type="call")
+        # Delta should be ~0.6368
+        assert abs(greeks["delta"] - 0.6368) < 0.01
+        # Gamma should be ~0.0188
+        assert abs(greeks["gamma"] - 0.0188) < 0.002
+
+
+class TestScoreOption:
+    def test_higher_delta_higher_score(self):
+        s1 = score_option(delta=0.8, ask=2.0, theta=-0.05)
+        s2 = score_option(delta=0.3, ask=2.0, theta=-0.05)
+        assert s1 > s2
+
+    def test_lower_ask_higher_score(self):
+        s1 = score_option(delta=0.5, ask=1.0, theta=-0.05)
+        s2 = score_option(delta=0.5, ask=5.0, theta=-0.05)
+        assert s1 > s2
+
+    def test_zero_ask_returns_zero(self):
+        assert score_option(delta=0.5, ask=0, theta=-0.05) == 0.0
+
+    def test_zero_theta_returns_zero(self):
+        assert score_option(delta=0.5, ask=2.0, theta=0) == 0.0
+
+    def test_near_zero_theta_returns_zero(self):
+        assert score_option(delta=0.5, ask=2.0, theta=1e-10) == 0.0
+
+
+def _make_chain_df(rows):
+    """Helper to build a mock options chain DataFrame."""
+    return pd.DataFrame(rows)
+
+
+class TestFetchOptionsChain:
+    @patch("options_scanner.yf.Ticker")
+    def test_invalid_symbol_raises(self, mock_ticker_cls):
+        mock_ticker_cls.return_value.options.__get__ = MagicMock(side_effect=Exception("bad"))
+        # The property access raises
+        mock_ticker = MagicMock()
+        type(mock_ticker).options = property(lambda self: (_ for _ in ()).throw(Exception("no data")))
+        mock_ticker_cls.return_value = mock_ticker
+
+        with pytest.raises(ValueError, match="Could not fetch options"):
+            fetch_options_chain("INVALID", "2026-03-01", "2026-06-01")
+
+    @patch("options_scanner.yf.Ticker")
+    def test_no_expirations_in_range(self, mock_ticker_cls):
+        mock_ticker = MagicMock()
+        mock_ticker.options = ("2026-01-01", "2026-02-01")
+        mock_ticker_cls.return_value = mock_ticker
+
+        with pytest.raises(ValueError, match="No expirations"):
+            fetch_options_chain("AAPL", "2026-07-01", "2026-09-01")
+
+    @patch("options_scanner.yf.Ticker")
+    def test_inverted_date_range_raises(self, mock_ticker_cls):
+        mock_ticker = MagicMock()
+        mock_ticker.options = ("2026-03-01", "2026-06-01")
+        mock_ticker_cls.return_value = mock_ticker
+
+        with pytest.raises(ValueError, match="start_date.*after.*end_date"):
+            fetch_options_chain("AAPL", "2026-06-01", "2026-03-01")
+
+
+class TestFindCheapestOptions:
+    @patch("options_scanner.get_risk_free_rate", return_value=0.04)
+    @patch("options_scanner.yf.Ticker")
+    def test_returns_formatted_output(self, mock_ticker_cls, mock_rfr):
+        mock_ticker = MagicMock()
+
+        future_exp = (datetime.now() + timedelta(days=60)).strftime("%Y-%m-%d")
+        mock_ticker.options = (future_exp,)
+
+        calls_df = _make_chain_df([
+            {"strike": 150, "bid": 2.50, "ask": 2.70, "volume": 100,
+             "openInterest": 500, "impliedVolatility": 0.30},
+            {"strike": 155, "bid": 1.20, "ask": 1.40, "volume": 50,
+             "openInterest": 200, "impliedVolatility": 0.35},
+        ])
+        puts_df = _make_chain_df([
+            {"strike": 145, "bid": 1.80, "ask": 2.00, "volume": 80,
+             "openInterest": 300, "impliedVolatility": 0.28},
+        ])
+
+        mock_chain = MagicMock()
+        mock_chain.calls = calls_df
+        mock_chain.puts = puts_df
+        mock_ticker.option_chain.return_value = mock_chain
+
+        hist_df = pd.DataFrame({"Close": [150.0]})
+        mock_ticker.history.return_value = hist_df
+
+        mock_ticker_cls.return_value = mock_ticker
+
+        result = find_cheapest_options("AAPL", future_exp, future_exp, top_n=3)
+
+        assert "Current Price" in result
+        assert "150.00" in result
+        assert "Delta" in result or "delta" in result.lower()
+
+    @patch("options_scanner.get_risk_free_rate", return_value=0.04)
+    @patch("options_scanner.yf.Ticker")
+    def test_filters_illiquid_options(self, mock_ticker_cls, mock_rfr):
+        mock_ticker = MagicMock()
+
+        future_exp = (datetime.now() + timedelta(days=60)).strftime("%Y-%m-%d")
+        mock_ticker.options = (future_exp,)
+
+        # All options are illiquid (volume < 10)
+        calls_df = _make_chain_df([
+            {"strike": 150, "bid": 2.50, "ask": 2.70, "volume": 1,
+             "openInterest": 2, "impliedVolatility": 0.30},
+        ])
+        puts_df = _make_chain_df([])
+
+        mock_chain = MagicMock()
+        mock_chain.calls = calls_df
+        mock_chain.puts = puts_df
+        mock_ticker.option_chain.return_value = mock_chain
+
+        hist_df = pd.DataFrame({"Close": [150.0]})
+        mock_ticker.history.return_value = hist_df
+
+        mock_ticker_cls.return_value = mock_ticker
+
+        result = find_cheapest_options("AAPL", future_exp, future_exp)
+        assert "No liquid options" in result

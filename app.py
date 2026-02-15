@@ -6,7 +6,7 @@ from strands_agents import Agent, tool
 from strands_agents.models import BedrockModel
 from bedrock_agentcore import BedrockAgentCoreApp
 
-from tools import get_weather, get_crypto_price
+from tools import scan_options
 
 load_dotenv()
 
@@ -18,17 +18,9 @@ model = BedrockModel(
     caching=True,
 )
 
-
-@tool
-def search_knowledge_base(query: str) -> str:
-    """Searches the internal FAQ for roaming and activation answers."""
-    # TODO: Replace with real RAG logic
-    return "Activation for roaming takes 24 hours."
-
-
 agent = Agent(
     model=model,
-    tools=[search_knowledge_base, get_weather, get_crypto_price],
+    tools=[scan_options],
     system_prompt="You are a helpful AWS Bedrock assistant.",
 )
 
@@ -39,7 +31,7 @@ def main(payload, context=None):
         if not payload or not isinstance(payload, dict):
             return {"status": "error", "output": "Invalid payload: expected a JSON object with a 'prompt' key."}
 
-        prompt = payload.get("prompt", "")
+        prompt = payload.get("prompt") or ""
         if not prompt.strip():
             return {"status": "error", "output": "Empty prompt provided."}
 
