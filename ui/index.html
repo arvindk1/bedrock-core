@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Options Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-primary: #0a0e14;
+    --bg-secondary: #111820;
+    --bg-card: #151c26;
+    --bg-input: #0d1219;
+    --border: #1e2a38;
+    --border-focus: #00e08e;
+    --accent: #00e08e;
+    --accent-dim: #00c07a;
+    --accent-glow: rgba(0, 224, 142, 0.15);
+    --text-primary: #e4e8ee;
+    --text-secondary: #7a8ba0;
+    --text-muted: #4a5a6e;
+    --error: #ff4d6a;
+    --error-bg: rgba(255, 77, 106, 0.08);
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --font-sans: 'DM Sans', system-ui, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Subtle scan-line overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Grid background pattern */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(30, 42, 56, 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30, 42, 56, 0.3) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 640px;
+    padding: 2rem 1.5rem;
+  }
+
+  /* Header */
+  header {
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 80px;
+    height: 1px;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .logo-icon {
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--accent);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--accent);
+    position: relative;
+  }
+
+  .logo-icon::before {
+    content: '▲';
+    font-size: 14px;
+  }
+
+  h1 {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+  }
+
+  .subtitle {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Form */
+  .form-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .field-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .field-group:last-child {
+    margin-bottom: 0;
+  }
+
+  label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  input, select {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  input:focus, select:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  input::placeholder {
+    color: var(--text-muted);
+  }
+
+  select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%237a8ba0' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2rem;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 1rem;
+    align-items: end;
+  }
+
+  /* Button */
+  .btn-scan {
+    width: 100%;
+    padding: 0.75rem 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--bg-primary);
+    background: var(--accent);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-scan:hover:not(:disabled) {
+    background: var(--accent-dim);
+    box-shadow: 0 0 20px var(--accent-glow);
+  }
+
+  .btn-scan:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .btn-scan:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-scan .spinner {
+    display: none;
+    width: 14px;
+    height: 14px;
+    border: 2px solid transparent;
+    border-top-color: var(--bg-primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 0.5rem;
+  }
+
+  .btn-scan.loading .spinner {
+    display: inline-block;
+  }
+
+  .btn-scan.loading .btn-text {
+    opacity: 0.7;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Results */
+  .results-area {
+    display: none;
+  }
+
+  .results-area.visible {
+    display: block;
+    animation: slideUp 0.3s ease-out;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+
+  .result-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .result-status {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+  }
+
+  .result-status.success {
+    color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  .result-status.error {
+    color: var(--error);
+    background: var(--error-bg);
+  }
+
+  .result-body {
+    padding: 1.25rem;
+  }
+
+  .result-output {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.7;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    tab-size: 2;
+  }
+
+  /* Error card */
+  .error-card {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 77, 106, 0.2);
+    border-radius: 6px;
+    padding: 1.25rem;
+  }
+
+  .error-title {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--error);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .error-message {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
+
+  /* Responsive */
+  @media (max-width: 480px) {
+    .container { padding: 1.25rem 1rem; }
+    .row, .row-3 { grid-template-columns: 1fr; }
+    h1 { font-size: 1.1rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">
+      <div class="logo-icon"></div>
+      <h1>Options Scanner</h1>
+    </div>
+    <div class="subtitle">Bedrock AgentCore &middot; Greeks &amp; Scoring</div>
+  </header>
+
+  <form id="scanForm" class="form-card" autocomplete="off">
+    <div class="field-group">
+      <label for="symbol">Symbol</label>
+      <input type="text" id="symbol" name="symbol" placeholder="AAPL" required
+             pattern="[A-Za-z]{1,5}" title="1-5 letter ticker symbol">
+    </div>
+
+    <div class="field-group">
+      <div class="row">
+        <div>
+          <label for="start_date">Start Date</label>
+          <input type="date" id="start_date" name="start_date" required>
+        </div>
+        <div>
+          <label for="end_date">End Date</label>
+          <input type="date" id="end_date" name="end_date" required>
+        </div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="row-3">
+        <div>
+          <label for="top_n">Results</label>
+          <select id="top_n" name="top_n">
+            <option value="3">Top 3</option>
+            <option value="5" selected>Top 5</option>
+            <option value="10">Top 10</option>
+          </select>
+        </div>
+        <div></div>
+        <div>
+          <button type="submit" class="btn-scan" id="submitBtn">
+            <span class="spinner"></span>
+            <span class="btn-text">Scan Options</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <div id="resultsArea" class="results-area"></div>
+
+  <footer>Powered by AWS Bedrock AgentCore</footer>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById('scanForm');
+  const btn = document.getElementById('submitBtn');
+  const resultsArea = document.getElementById('resultsArea');
+
+  // Set default dates: start = today, end = +30 days
+  const today = new Date();
+  const future = new Date(today);
+  future.setDate(future.getDate() + 30);
+  document.getElementById('start_date').value = fmt(today);
+  document.getElementById('end_date').value = fmt(future);
+
+  function fmt(d) {
+    return d.toISOString().slice(0, 10);
+  }
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const symbol = document.getElementById('symbol').value.trim();
+    const startDate = document.getElementById('start_date').value;
+    const endDate = document.getElementById('end_date').value;
+    const topN = parseInt(document.getElementById('top_n').value, 10);
+
+    if (!symbol) return;
+
+    if (endDate < startDate) {
+      showError('Invalid date range', 'End date must be on or after start date.');
+      return;
+    }
+
+    btn.classList.add('loading');
+    btn.disabled = true;
+    resultsArea.className = 'results-area';
+    resultsArea.innerHTML = '';
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const resp = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: symbol,
+          start_date: startDate,
+          end_date: endDate,
+          top_n: topN,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      const data = await resp.json();
+
+      if (!resp.ok || data.status === 'error') {
+        showError('Scan failed', data.output || data.detail || `HTTP ${resp.status}`);
+      } else {
+        showResult(symbol, data.output || JSON.stringify(data, null, 2));
+      }
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err.name === 'AbortError') {
+        showError('Timeout', 'Request timed out after 60 seconds.');
+      } else {
+        showError('Network error', err.message);
+      }
+    } finally {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
+  });
+
+  function showResult(symbol, output) {
+    resultsArea.innerHTML = `
+      <div class="result-card">
+        <div class="result-header">
+          <span class="result-label">${esc(symbol)} &mdash; Scan Results</span>
+          <span class="result-status success">OK</span>
+        </div>
+        <div class="result-body">
+          <div class="result-output">${esc(output)}</div>
+        </div>
+      </div>`;
+    resultsArea.className = 'results-area visible';
+  }
+
+  function showError(title, message) {
+    resultsArea.innerHTML = `
+      <div class="error-card">
+        <div class="error-title">${esc(title)}</div>
+        <div class="error-message">${esc(message)}</div>
+      </div>`;
+    resultsArea.className = 'results-area visible';
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+})();
+</script>
+</body>
+</html>
