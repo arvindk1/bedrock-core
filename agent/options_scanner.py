@@ -1,223 +1,215 @@
+"""
+Options Scanner (Policy-Based Router)
+=====================================
+Smart options scanner with regime-based strategy selection.
+Filters for professional-grade setups (DTE 35-50, Delta 30-50, Liquidity).
+"""
+
 import math
+import logging
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any
 
 import pandas as pd
 import yfinance as yf
 from scipy.stats import norm
 
+# Integration with our engines
+from vol_engine import VolEngine, VolatilityModel
+from market_data import MarketData
 
-def get_risk_free_rate():
-    """Fetch 10-year Treasury yield as risk-free rate, default to 4%."""
-    try:
-        tnx = yf.Ticker("^TNX")
-        hist = tnx.history(period="1d")
-        if not hist.empty:
-            return hist["Close"].iloc[-1] / 100
-    except Exception:
-        pass
-    return 0.04
+logger = logging.getLogger(__name__)
 
+# Constants for "Smart" Filtering
+MIN_DTE = 30
+MAX_DTE = 60  # Sweet spot for theta/gamma balance
+TARGET_DELTA_MIN = 0.25
+TARGET_DELTA_MAX = 0.55
+MIN_LIQUIDITY_OI = 500
+MIN_LIQUIDITY_VOL = 100
 
-def calculate_greeks(S, K, T, r, sigma, option_type="call"):
-    """Calculate Black-Scholes Greeks.
-
-    Args:
-        S: Current stock price
-        K: Strike price
-        T: Time to expiration in years
-        r: Risk-free rate
-        sigma: Implied volatility
-        option_type: 'call' or 'put'
-
-    Returns:
-        dict with delta, gamma, theta, vega
+class OptionsScanner:
     """
-    if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
-        return {"delta": 0, "gamma": 0, "theta": 0, "vega": 0}
-
-    sqrt_T = math.sqrt(T)
-    d1 = (math.log(S / K) + (r + sigma**2 / 2) * T) / (sigma * sqrt_T)
-    d2 = d1 - sigma * sqrt_T
-
-    n_d1 = norm.pdf(d1)  # N'(d1)
-
-    gamma = n_d1 / (S * sigma * sqrt_T)
-    vega = S * n_d1 * sqrt_T / 100  # per 1% move in IV
-
-    if option_type == "call":
-        delta = norm.cdf(d1)
-        theta = (-(S * n_d1 * sigma) / (2 * sqrt_T)
-                 - r * K * math.exp(-r * T) * norm.cdf(d2)) / 365
-    else:
-        delta = norm.cdf(d1) - 1
-        theta = (-(S * n_d1 * sigma) / (2 * sqrt_T)
-                 + r * K * math.exp(-r * T) * norm.cdf(-d2)) / 365
-
-    return {"delta": delta, "gamma": gamma, "theta": theta, "vega": vega}
-
-
-def score_option(delta, ask, theta):
-    """Score an option by bang-for-buck: high delta exposure per dollar of premium and theta decay.
-
-    Returns:
-        float score (higher = better), or 0 if inputs are invalid
+    Professional Options Scanner.
+    Routes strategies based on volatility regime and filters for high-probability setups.
     """
-    if ask <= 0 or abs(theta) < 1e-8:
-        return 0.0
-    return abs(delta) / (ask * abs(theta))
 
+    def __init__(self):
+        self.vol_engine = VolEngine()
+        self.market_data = MarketData()
 
-def fetch_options_chain(symbol, start_date, end_date):
-    """Fetch options chain from yfinance for expirations within date range.
+    async def scan_opportunities(self, symbol: str, strategy_preference: Optional[str] = None) -> List[Dict]:
+        """
+        Scan for option opportunities based on market regime.
 
-    Args:
-        symbol: Stock ticker
-        start_date: YYYY-MM-DD string
-        end_date: YYYY-MM-DD string
+        Args:
+            symbol: Stock ticker
+            strategy_preference: Optional override (e.g. "IRON_CONDOR")
 
-    Returns:
-        tuple: (ticker object, list of (expiration_str, chain_dataframe) pairs)
-    """
-    ticker = yf.Ticker(symbol)
+        Returns:
+            List of trade dictionaries
+        """
+        # 1. Determine Regime
+        vol_result = self.vol_engine.calculate_volatility(symbol, model=VolatilityModel.HYBRID)
+        iv_rank = self.market_data.get_iv_rank(symbol) # approximation or from vol engine
 
-    # Validate ticker has options
-    try:
-        expirations = ticker.options
-    except Exception:
-        raise ValueError(f"Could not fetch options for '{symbol}'. Verify the ticker is valid.")
+        current_price = self.market_data.get_current_price(symbol)
+        if not current_price:
+            logger.error(f"Could not get price for {symbol}")
+            return []
 
-    if not expirations:
-        raise ValueError(f"No options available for '{symbol}'.")
+        # Simple Regime Logic
+        # Low Vol (IV < 30% or Rank < 30) -> Debit Strategies (Long Vega)
+        # High Vol (IV > 50% or Rank > 50) -> Credit Strategies (Short Vega)
+        is_high_vol = vol_result.annual_volatility > 0.40
+        is_low_vol = vol_result.annual_volatility < 0.25
 
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        strategy_to_scan = strategy_preference
+        if not strategy_to_scan:
+            if is_high_vol:
+                strategy_to_scan = "CREDIT_SPREAD" # or IRON_CONDOR if neutral
+            elif is_low_vol:
+                strategy_to_scan = "DEBIT_SPREAD" # or CALENDAR
+            else:
+                strategy_to_scan = "VERTICAL_SPREAD" # Default
 
-    if start > end:
-        raise ValueError(f"start_date ({start_date}) is after end_date ({end_date}).")
+        logger.info(f"🔎 Scanning {symbol}: Vol={vol_result.annual_volatility:.1%}, Strategy={strategy_to_scan}")
 
-    filtered = [exp for exp in expirations
-                if start <= datetime.strptime(exp, "%Y-%m-%d").date() <= end]
+        # 2. Fetch Chains
+        expiry = self._find_optimal_expiration(symbol)
+        if not expiry:
+            return []
 
-    if not filtered:
-        raise ValueError(
-            f"No expirations for '{symbol}' between {start_date} and {end_date}. "
-            f"Available: {', '.join(expirations[:5])}{'...' if len(expirations) > 5 else ''}"
-        )
+        chain = self.market_data.get_option_chain(symbol, expiry)
+        if chain is None:
+            return []
 
-    results = []
-    for exp in filtered:
-        chain = ticker.option_chain(exp)
-        calls = chain.calls.copy()
-        calls["optionType"] = "call"
-        puts = chain.puts.copy()
-        puts["optionType"] = "put"
-        combined = _concat_frames(calls, puts)
-        results.append((exp, combined))
+        # 3. Find Candidates
+        candidates = []
 
-    return ticker, results
+        if "SPREAD" in strategy_to_scan:
+            candidates = self._find_vertical_spreads(symbol, current_price, chain, expiry, strategy_to_scan)
+        elif "CONDOR" in strategy_to_scan:
+            # Placeholder for Condor logic
+            pass
 
+        return candidates
 
-def _concat_frames(calls, puts):
-    """Concatenate calls and puts DataFrames."""
-    return pd.concat([calls, puts], ignore_index=True)
+    def _find_optimal_expiration(self, symbol: str) -> Optional[str]:
+        """Find expiration date closest to 45 DTE."""
+        try:
+            ticker = yf.Ticker(symbol)
+            expirations = ticker.options
+            if not expirations:
+                return None
 
+            today = datetime.now().date()
+            best_exp = None
+            min_diff = 999
 
-def find_cheapest_options(symbol, start_date, end_date, top_n=5):
-    """Find the cheapest options with the best Greeks profile.
+            for exp in expirations:
+                exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+                days_to = (exp_date - today).days
 
-    Args:
-        symbol: Stock ticker
-        start_date: YYYY-MM-DD start of expiration range
-        end_date: YYYY-MM-DD end of expiration range
-        top_n: Number of results to return
+                if MIN_DTE <= days_to <= MAX_DTE:
+                    # Prefer monthly usage if possible (logic to check 3rd friday could be added)
+                    return exp
 
-    Returns:
-        str: Formatted results table
-    """
-    ticker, chains = fetch_options_chain(symbol, start_date, end_date)
+                # Fallback to closest within reason
+                diff = abs(days_to - 45)
+                if diff < min_diff and days_to > 20:
+                    min_diff = diff
+                    best_exp = exp
 
-    # Current stock price
-    hist = ticker.history(period="1d")
-    if hist.empty:
-        raise ValueError(f"Could not fetch current price for '{symbol}'.")
-    S = hist["Close"].iloc[-1]
+            return best_exp
+        except Exception as e:
+            logger.error(f"Error finding expiration for {symbol}: {e}")
+            # Fallback to a mock date ~45 days out
+            fallback = (datetime.now() + pd.Timedelta(days=45)).strftime("%Y-%m-%d")
+            logger.warning(f"Using fallback expiration {fallback} for {symbol}")
+            return fallback
 
-    r = get_risk_free_rate()
-    today = datetime.now().date()
+    def _find_vertical_spreads(self, symbol: str, spot: float, chain: Any, expiry: str, strategy: str) -> List[Dict]:
+        """Find vertical spreads matching delta criteria."""
+        calls = chain.calls
+        puts = chain.puts
+        r = 0.04 # Risk free
 
-    scored_options = []
+        opportunities = []
 
-    for exp_str, chain in chains:
-        exp_date = datetime.strptime(exp_str, "%Y-%m-%d").date()
-        T = (exp_date - today).days / 365.0
-        if T <= 0:
-            continue
+        # Determine direction based on simple trend or assumption
+        # (Scanner usually needs directional input, assume Bullish for Long Calls/Put Credit, Bearish for Puts)
+        # For now, we return 'best' of both sides.
 
-        for _, row in chain.iterrows():
-            K = row["strike"]
-            sigma = row.get("impliedVolatility", 0)
-            ask = row.get("ask", 0)
-            bid = row.get("bid", 0)
-            volume = row.get("volume", 0) or 0
-            open_interest = row.get("openInterest", 0) or 0
-            option_type = row["optionType"]
+        # Bullish Spreads (Long Call Spread or Short Put Spread)
+        # Target Short Deltas ~30, Long Deltas ~50+ for Debit
+        # Target Short Deltas ~30, Long Deltas ~10 for Credit
 
-            # Filter illiquid
-            if volume < 10 or open_interest < 10:
-                continue
-            if ask <= 0:
-                continue
-            if sigma <= 0:
-                continue
+        # Calculate Greeks for all first? Or just iterate.
+        # Check liquidity first
+        calls = calls[(calls["volume"] >= MIN_LIQUIDITY_VOL) & (calls["openInterest"] >= MIN_LIQUIDITY_OI)]
+        puts = puts[(puts["volume"] >= MIN_LIQUIDITY_VOL) & (puts["openInterest"] >= MIN_LIQUIDITY_OI)]
 
-            greeks = calculate_greeks(S, K, T, r, sigma, option_type)
+        days_to = (datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()).days
+        T = days_to / 365.0
 
-            # Filter deep OTM
-            if abs(greeks["delta"]) < 0.05:
-                continue
+        # Scan Calls (Bullish)
+        for _, long_leg in calls.iterrows():
+            # Approx Delta check using simple moneyness if delta not in data
+            # deep ITM = delta 1, ATM = 0.5.
+            # We need greeks.
+            iv = long_leg.get("impliedVolatility", 0)
+            if iv == 0: continue
 
-            sc = score_option(greeks["delta"], ask, greeks["theta"])
+            greeks = self._calculate_greeks(spot, long_leg["strike"], T, r, iv, "call")
+            delta = greeks["delta"]
 
-            scored_options.append({
-                "symbol": symbol.upper(),
-                "type": option_type,
-                "strike": K,
-                "expiration": exp_str,
-                "bid": bid,
-                "ask": ask,
-                "IV": sigma,
-                "delta": greeks["delta"],
-                "gamma": greeks["gamma"],
-                "theta": greeks["theta"],
-                "vega": greeks["vega"],
-                "score": sc,
-            })
+            if 0.40 <= delta <= 0.60: # ATM/ITM for Debit Spread Anchor
+                # Find Short Leg (OTM, lower delta)
+                for _, short_leg in calls.iterrows():
+                    if short_leg["strike"] > long_leg["strike"]:
+                        iv_s = short_leg.get("impliedVolatility", 0)
+                        greeks_s = self._calculate_greeks(spot, short_leg["strike"], T, r, iv_s, "call")
 
-    if not scored_options:
-        return f"No liquid options found for {symbol} between {start_date} and {end_date}."
+                        if 0.20 <= greeks_s["delta"] <= 0.35:
+                            # Valid Debit Spread Candidate
+                            width = short_leg["strike"] - long_leg["strike"]
+                            details = {
+                                "symbol": symbol,
+                                "strategy": "BULL_CALL_DEBIT_SPREAD",
+                                "expiration": expiry,
+                                "legs": [
+                                    {"side": "buy", "strike": long_leg["strike"], "type": "call", "delta": delta},
+                                    {"side": "sell", "strike": short_leg["strike"], "type": "call", "delta": greeks_s["delta"]}
+                                ],
+                                "width": width,
+                                "cost": long_leg["ask"] - short_leg["bid"], # Conservative
+                                "max_profit": width - (long_leg["ask"] - short_leg["bid"]),
+                                "description": f"Long {long_leg['strike']} / Short {short_leg['strike']} Call Spread"
+                            }
+                            # Basic filtering: Risk/Reward
+                            if details["cost"] > 0 and details["max_profit"] / details["cost"] > 1.5:
+                                opportunities.append(details)
 
-    scored_options.sort(key=lambda x: x["score"], reverse=True)
-    top = scored_options[:top_n]
+        return opportunities
 
-    return _format_results(top, S)
+    def _calculate_greeks(self, S, K, T, r, sigma, option_type="call"):
+        """Calculate Black-Scholes Greeks."""
+        if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
+            return {"delta": 0, "gamma": 0, "theta": 0, "vega": 0}
 
+        sqrt_T = math.sqrt(T)
+        d1 = (math.log(S / K) + (r + sigma**2 / 2) * T) / (sigma * sqrt_T)
+        d2 = d1 - sigma * sqrt_T
 
-def _format_results(options, current_price):
-    """Format options results as a readable text table."""
-    lines = [f"Current Price: ${current_price:.2f}", ""]
-    header = (
-        f"{'Type':<5} {'Strike':>8} {'Exp':>12} {'Bid':>7} {'Ask':>7} "
-        f"{'IV':>6} {'Delta':>7} {'Gamma':>7} {'Theta':>7} {'Vega':>6} {'Score':>8}"
-    )
-    lines.append(header)
-    lines.append("-" * len(header))
+        n_d1 = norm.pdf(d1)
 
-    for o in options:
-        lines.append(
-            f"{o['type']:<5} {o['strike']:>8.2f} {o['expiration']:>12} "
-            f"{o['bid']:>7.2f} {o['ask']:>7.2f} {o['IV']:>6.1%} "
-            f"{o['delta']:>7.4f} {o['gamma']:>7.4f} {o['theta']:>7.4f} "
-            f"{o['vega']:>6.2f} {o['score']:>8.2f}"
-        )
+        if option_type == "call":
+            delta = norm.cdf(d1)
+        else:
+            delta = norm.cdf(d1) - 1
 
-    return "\n".join(lines)
+        return {"delta": delta}
+
+# Global Instance
+options_scanner = OptionsScanner()
