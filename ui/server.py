@@ -40,14 +40,14 @@ class ScanRequest(BaseModel):
 def invoke_agent(prompt: str) -> dict:
     """Call the deployed AgentCore runtime."""
     client = boto3.client("bedrock-agentcore", region_name=REGION)
-    response = client.invoke_agent_runtime(
+    resp = client.invoke_agent_runtime(
         agentRuntimeArn=RUNTIME_ARN,
         qualifier="DEFAULT",
         contentType="application/json",
         accept="application/json",
         payload=json.dumps({"prompt": prompt}).encode(),
     )
-    body = response["payload"].read().decode()
+    body = resp["response"].read().decode()
     return json.loads(body)
 
 
