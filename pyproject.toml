@@ -12,6 +12,9 @@ dependencies = [
     "pandas>=1.5.0",
 ]
 
+[tool.setuptools]
+py-modules = ["app", "tools", "options_scanner"]
+
 [dependency-groups]
 dev = [
     "bedrock-agentcore-starter-toolkit>=0.2.10",
