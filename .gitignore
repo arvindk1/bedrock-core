@@ -16,3 +16,6 @@ cdk/.venv/
 .idea/
 .vscode/
 *.swp
+
+# Worktrees
+.worktrees/
