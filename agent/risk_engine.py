@@ -186,6 +186,18 @@ class RiskEngine:
         if sector_rejected:
             return True, sector_reason
 
+        # 4. Drawdown circuit breaker via market_context
+        if market_context:
+            daily_pnl = market_context.get("daily_pnl", 0.0)
+            portfolio_value = market_context.get("portfolio_value", 0.0)
+            if portfolio_value > 0 and self.check_drawdown_halt(daily_pnl, portfolio_value):
+                return (
+                    True,
+                    f"Rejected: circuit breaker triggered — daily loss "
+                    f"${abs(daily_pnl):.0f} exceeds {self.drawdown_halt_pct:.0%} of "
+                    f"${portfolio_value:.0f}",
+                )
+
         return False, None
 
     # ------------------------------------------------------------------
@@ -250,7 +262,7 @@ class RiskEngine:
             portfolio_value: Start-of-day portfolio value
         """
         if portfolio_value <= 0:
-            return True  # degenerate case — halt
+            return False  # degenerate case — no valid basis, don't halt
         loss_pct = abs(daily_pnl) / portfolio_value if daily_pnl < 0 else 0.0
         return loss_pct >= self.drawdown_halt_pct
 
