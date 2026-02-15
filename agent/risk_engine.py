@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -412,6 +414,56 @@ class RiskEngine:
                 )
 
         return alerts, metrics
+
+    # ------------------------------------------------------------------
+    # Correlation Check
+    # ------------------------------------------------------------------
+    def calculate_correlation(
+        self, prices_a: np.ndarray, prices_b: np.ndarray
+    ) -> float:
+        """
+        Calculate correlation between two price series using daily log returns.
+
+        Returns correlation coefficient (-1 to 1), or 0.0 if insufficient data
+        (fewer than 10 price points or fewer than 5 returns after log calculation).
+        """
+        a = np.asarray(prices_a, dtype=float)
+        b = np.asarray(prices_b, dtype=float)
+
+        # Use the shorter of the two series
+        n = min(len(a), len(b))
+        if n < 10:
+            return 0.0
+
+        a = a[:n]
+        b = b[:n]
+
+        # Daily log returns
+        returns_a = np.diff(np.log(a))
+        returns_b = np.diff(np.log(b))
+
+        if len(returns_a) < 5:
+            return 0.0
+
+        corr_matrix = np.corrcoef(returns_a, returns_b)
+        return float(corr_matrix[0, 1])
+
+    def check_correlation_limit(
+        self, correlation: float
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Check whether a correlation value exceeds the configured threshold.
+
+        Returns:
+            (rejected: bool, reason: Optional[str])
+        """
+        if abs(correlation) > self.max_correlation:
+            return (
+                True,
+                f"Rejected: correlation {correlation:.2f} exceeds limit "
+                f"{self.max_correlation:.2f}",
+            )
+        return False, None
 
     # ------------------------------------------------------------------
     # Helpers

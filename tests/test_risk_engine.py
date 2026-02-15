@@ -6,6 +6,8 @@ TDD: Write tests first, then implement to pass.
 import os
 import sys
 
+import numpy as np
+
 # Allow bare imports from agent/ (matches container layout)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
@@ -229,3 +231,48 @@ class TestAnalyzePortfolioRisk:
         alerts, metrics = engine.analyze_portfolio_risk(positions=positions)
         strategy_metrics = [m for m in metrics if m.metric_name.startswith("Strategy:")]
         assert len(strategy_metrics) >= 2
+
+
+# ---------------------------------------------------------------------------
+# TestCorrelationCheck
+# ---------------------------------------------------------------------------
+class TestCorrelationCheck:
+    """Correlation check: calculate_correlation and check_correlation_limit."""
+
+    def test_high_correlation_rejected(self):
+        """Two nearly identical price series should have high correlation (>0.7)
+        and check_correlation_limit should reject it."""
+        engine = RiskEngine()
+        np.random.seed(99)
+        prices_a = 100.0 + np.cumsum(np.random.randn(60) * 0.5)
+        prices_b = prices_a + np.random.randn(60) * 0.01  # tiny noise
+
+        corr = engine.calculate_correlation(prices_a, prices_b)
+        assert corr > 0.7, f"Expected high correlation, got {corr}"
+
+        rejected, reason = engine.check_correlation_limit(corr)
+        assert rejected is True
+        assert reason is not None
+        assert "correlation" in reason.lower()
+
+    def test_low_correlation_accepted(self):
+        """Two independent random walks should have low correlation
+        and check_correlation_limit should accept it."""
+        engine = RiskEngine()
+        np.random.seed(42)
+        prices_a = 100.0 + np.cumsum(np.random.randn(60) * 0.5)
+        prices_b = 100.0 + np.cumsum(np.random.randn(60) * 0.5)
+
+        corr = engine.calculate_correlation(prices_a, prices_b)
+        rejected, reason = engine.check_correlation_limit(corr)
+        assert rejected is False
+        assert reason is None
+
+    def test_insufficient_data_returns_zero(self):
+        """Only 2 data points each. calculate_correlation should return 0.0."""
+        engine = RiskEngine()
+        prices_a = np.array([100.0, 101.0])
+        prices_b = np.array([200.0, 202.0])
+
+        corr = engine.calculate_correlation(prices_a, prices_b)
+        assert corr == 0.0
