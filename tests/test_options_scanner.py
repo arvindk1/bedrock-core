@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from options_scanner import (
+from delete.options_scanner import (
     calculate_greeks,
     fetch_options_chain,
     find_cheapest_options,

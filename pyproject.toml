@@ -10,6 +10,8 @@ dependencies = [
     "yfinance>=0.2.0",
     "scipy>=1.10.0",
     "pandas>=1.5.0",
+    "aws-cdk-lib>=2.238.0",
+    "constructs>=10.4.5",
 ]
 
 [tool.setuptools]

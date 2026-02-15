@@ -18,7 +18,7 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install .
-pip install bedrock-agentcore-starter-toolkit  # CLI tooling
+pip install bedrock-agentcore-starter-toolkit  # CLI tooling (Only for small projects - Not Prod Grade)
 
 # Configure environment
 cp .env.example .env
@@ -40,13 +40,13 @@ This generates a `.bedrock_agentcore/` directory with a Dockerfile and deploymen
 ## Run Locally
 
 ```bash
-agentcore dev
+agentcore dev   #For local 
 ```
 
 ## Deploy to AWS
 
 ```bash
-agentcore deploy
+agentcore deploy    # For Production (AWS)
 ```
 
 This builds an ARM64 container via CodeBuild, pushes to ECR, and deploys to AgentCore Runtime.
@@ -82,3 +82,15 @@ tests/              # Unit tests
 ```bash
 agentcore destroy
 ```
+
+
+Steps:
+Summary: 9 tasks to add CDK infrastructure to bedrock-core:
+  1. Create agent/Dockerfile and agent/requirements.txt
+  2. Copy agent source code into agent/
+  3. Create cdk/cdk.json and cdk/requirements.txt
+  4. Create cdk/build_trigger.py (Lambda custom resource)
+  5. Create cdk/stack.py (the main CDK stack)
+  6. Create cdk/app.py (CDK entry point)
+  7. Set up CDK venv and verify cdk synth
+  8. Verify existing tests still pass

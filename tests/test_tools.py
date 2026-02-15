@@ -7,7 +7,7 @@ mock_strands.tool = lambda f: f  # @tool decorator is a passthrough
 sys.modules["strands_agents"] = mock_strands
 
 import importlib
-import tools
+import delete.tools as tools
 
 
 def setup_module():

@@ -146,7 +146,7 @@ class AgentCoreStack(Stack):
             timeout=Duration.minutes(15),
             code=lambda_.Code.from_asset(
                 os.path.dirname(__file__),
-                exclude=["*.pyc", "__pycache__", "cdk.out", "cdk.json", "*.txt"],
+                exclude=["*.pyc", "__pycache__", "cdk.out", ".venv", "cdk.json", "*.txt", "app.py", "stack.py"],
             ),
             initial_policy=[
                 iam.PolicyStatement(
@@ -271,7 +271,8 @@ class AgentCoreStack(Stack):
             description="Bedrock Core Options Scanner agent on AgentCore",
             environment_variables={
                 "AWS_DEFAULT_REGION": self.region,
-                "BEDROCK_MODEL_ID": "us.amazon.nova-lite-v1:0",
+                # "BEDROCK_MODEL_ID": "us.amazon.nova-lite-v1:0",
+                "BEDROCK_MODEL_ID": "deepseek.v3.2",
             },
         )
 

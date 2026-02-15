@@ -18,7 +18,7 @@ def setup_module():
     sys.modules["bedrock_agentcore"] = MagicMock()
     sys.modules["dotenv"] = MagicMock()
 
-    import tools
+    import delete.tools as tools
     importlib.reload(tools)
 
 
@@ -33,7 +33,7 @@ def teardown_module():
 
 def _reload_app(agent_side_effect=None):
     """Reload app module with a fresh mock agent, return the entrypoint function."""
-    import app as app_module
+    import delete.app as app_module
 
     mock_agentcore_app = MagicMock()
     mock_agentcore_app.return_value.entrypoint = lambda f: f
