@@ -57,8 +57,16 @@ class OptionsScanner:
         # 1. Determine Regime using Phase-2 detector (short vs long vol + IV rank)
         from vol_engine import VolRegime
 
-        regime = self.vol_engine.detect_regime(symbol)
-        vol_result = self.vol_engine.calculate_volatility(symbol, model=VolatilityModel.HYBRID)
+        try:
+            regime = self.vol_engine.detect_regime(symbol)
+            vol_result = self.vol_engine.calculate_volatility(symbol, model=VolatilityModel.HYBRID)
+        except Exception as e:
+            logger.warning(f"Vol regime detection failed for {symbol}: {e}. Using neutral default.")
+            regime = VolRegime.MEDIUM
+            # Safe default: treat as medium vol if calculation fails
+            class SafeVolResult:
+                annual_volatility = 0.30
+            vol_result = SafeVolResult()
 
         current_price = self.market_data.get_current_price(symbol)
         if not current_price:
