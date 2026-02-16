@@ -159,9 +159,11 @@ class ScoredGatekeeper:
 
     def _check_liquidity(self, trade_proposal: Dict[str, Any]) -> Tuple[float, Optional[str], float]:
         """
-        Check liquidity using Phase-2 spec: min(Open Interest, NBBO Size * 100).
+        Check liquidity using Phase-2 spec: min Open Interest as proxy capacity.
 
-        Can we enter/exit target_size without taking > 2% of available liquidity?
+        Liquidity capacity = min(OI) across all legs (in contracts)
+        Target size = 1 spread (100 shares = 1 contract)
+        Pass if market_impact < 2% of available liquidity
 
         Returns:
             (liquidity_score: 0-100, reason: str|None, penalty: 0-50)
@@ -170,40 +172,37 @@ class ScoredGatekeeper:
         if not legs:
             return 50.0, "No legs found", 20  # Unknown liquidity, light penalty
 
-        # Compute min liquidity across all legs
+        # Compute liquidity capacity from OI (proxy): min OI across all legs
         min_oi = float("inf")
-        min_nbbo_size = float("inf")
+        has_oi = False
 
         for leg in legs:
             oi = leg.get("open_interest", 0)
-            nbbo_size = leg.get("nbbo_size", 0)
-
             if oi > 0:
                 min_oi = min(min_oi, oi)
-            if nbbo_size > 0:
-                min_nbbo_size = min(min_nbbo_size, nbbo_size)
+                has_oi = True
 
-        # Liquidity score = min(OI, NBBO_size * 100)
-        liq_available = min(min_oi if min_oi != float("inf") else 0, min_nbbo_size * 100)
+        if not has_oi or min_oi == float("inf"):
+            return 0.0, "No liquidity data available (open interest required)", 50  # Hard penalty
 
-        # Assume target size = 1 spread (100 shares, 1 contract pair)
-        target_size = 100
-        liquidity_pct_used = (target_size / liq_available * 100) if liq_available > 0 else 100
+        # Liquidity capacity = min_oi (contracts directly)
+        # Target size = 1 contract (100 shares)
+        # Market impact = (target_size / capacity) * 100%
+        target_size = 1  # 1 contract
+        market_impact_pct = (target_size / min_oi) * 100
 
-        # Pass if < 2% impact
-        if liq_available == 0:
-            return 0.0, "No liquidity data available", 50  # Hard penalty
-
-        if liquidity_pct_used > 2:
-            penalty = min(30, int(liquidity_pct_used / 2))  # Escalate penalty with impact
+        # 2% threshold enforced
+        if market_impact_pct > 2.0:
+            penalty = min(30, int(market_impact_pct / 2))  # Escalate penalty
             return (
                 max(0, 100 - penalty),
-                f"Liquidity impact {liquidity_pct_used:.1f}% (> 2% threshold)",
+                f"Market impact {market_impact_pct:.1f}% (> 2% threshold, min OI {min_oi})",
                 penalty,
             )
 
-        # Good liquidity
-        score = min(100, int(liq_available / 1000))  # Scale to 100 for ~1000+ contracts
+        # Good liquidity: score based on min_oi (capacity in contracts)
+        # 100+ contracts → score 100, 50 contracts → score 50, etc.
+        score = min(100, int(min_oi / 100 * 100))  # Cap at 100
         return score, None, 0
 
     def _check_spreads(self, trade_proposal: Dict[str, Any]) -> Tuple[bool, Optional[str], float]:

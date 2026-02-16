@@ -151,6 +151,8 @@ class OptionsScanner:
         puts = puts[(puts["volume"] >= MIN_LIQUIDITY_VOL) & (puts["openInterest"] >= MIN_LIQUIDITY_OI)]
 
         days_to = (datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()).days
+        # T uses calendar days (365) for Black-Scholes option pricing
+        # Note: Vol engine uses trading days (252) for annualized volatility—different conventions are correct
         T = days_to / 365.0
 
         # Scan Calls (Bullish)
@@ -207,14 +209,21 @@ class OptionsScanner:
                                 "implied_volatility": float(short_leg.get("impliedVolatility", 0)),
                             }
 
+                            net_debit = long_leg["ask"] - short_leg["bid"]  # Conservative
                             details = {
                                 "symbol": symbol,
                                 "strategy": "BULL_CALL_DEBIT_SPREAD",
                                 "expiration": expiry,
                                 "legs": [long_leg_enriched, short_leg_enriched],
+                                # Phase-2 Ready Fields
                                 "width": width,
-                                "cost": long_leg["ask"] - short_leg["bid"],  # Conservative
-                                "max_profit": width - (long_leg["ask"] - short_leg["bid"]),
+                                "spread_width": width,  # Explicit for clarity
+                                "cost": net_debit,
+                                "net_debit": net_debit,
+                                "max_loss": net_debit * 100,  # Contract multiplier (100 shares/contract)
+                                "max_profit": width - net_debit,
+                                "breakeven": long_leg["strike"] + net_debit,  # For debit calls
+                                "dte": days_to,
                                 "description": f"Long {long_leg['strike']} / Short {short_leg['strike']} Call Spread",
                             }
                             # Basic filtering: Risk/Reward
@@ -262,7 +271,11 @@ def generate_candidates(
         end_date: Latest expiration (YYYY-MM-DD)
 
     Returns:
-        List of candidate dicts with fields: symbol, strategy, expiration, legs, cost, max_profit, dte
+        List of candidate dicts with fields:
+        - symbol, strategy, expiration, dte
+        - legs: [{"bid", "ask", "open_interest", "volume", "side", "strike", "delta", ...}]
+        - cost, max_loss, max_profit, net_debit, breakeven
+        - spread_width, width, description
     """
     try:
         start = datetime.strptime(start_date, "%Y-%m-%d").date()

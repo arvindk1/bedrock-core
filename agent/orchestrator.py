@@ -205,23 +205,25 @@ def full_scan_with_orchestration(
     policy_mode: str = "tight",
 ) -> DecisionLog:
     """
-    Full Phase 2 orchestration: Events → Vol → Risk → Correlation.
+    Full Phase 2 orchestration: "Desk Flow" for options discovery.
 
-    CALL GRAPH (Tasks 1-4):
-    1. Vol/Events context (Tasks 2+3)
-    2. Scan candidates (base scanner)
-    3. Risk gate (Task 1)
-    4. Correlation gate (Task 4)
+    ORCHESTRATION PIPELINE:
+    1. Events Check → Blocking events (earnings, macro) stop flow
+    2. Vol Regime Detection → Strategy hint (debit/credit/vertical)
+    3. Candidate Scan → Raw spreads with Phase-2 enrichment
+    4. Risk Gate → Reject on concentration/drawdown
+    5. ScoredGatekeeper → Soft scoring (liquidity + spreads + regime alignment)
+    6. Final Ranking → Sort by gatekeeper score + profit/cost ratio
 
     Args:
         symbol: Ticker
         start_date, end_date: Expiration window (YYYY-MM-DD)
         top_n: Return top N contracts
         portfolio: List of current positions for risk/correlation checks
-        policy_mode: "tight", "moderate", or "aggressive"
+        policy_mode: "tight" (1K), "moderate" (2K), or "aggressive" (5K) max risk per trade
 
     Returns:
-        DecisionLog with full decision trace
+        DecisionLog with: regime, blocking_events, candidates at each gate, final_picks, rejections
     """
     from options_scanner import generate_candidates
     from risk_engine import RiskEngine

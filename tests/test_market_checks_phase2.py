@@ -52,11 +52,11 @@ class TestLiquidityCheck:
         """Low liquidity → scales penalty based on impact %."""
         gatekeeper = ScoredGatekeeper()
         legs = [
-            {"open_interest": 50, "nbbo_size": 1},  # min(50, 100) = 50, impact = 100/50 = 200%
+            {"open_interest": 1},  # Very low OI: market_impact = (1/1)*100 = 100%
         ]
         score, reason, penalty = gatekeeper._check_liquidity({"legs": legs})
         assert penalty > 0
-        assert "Liquidity impact" in reason
+        assert "Market impact" in reason
 
     def test_no_liquidity_data_hard_penalty(self):
         """No OI/NBBO → can't calculate → max penalty."""
@@ -182,7 +182,7 @@ class TestCheckTrade:
         }
         score = gatekeeper.check_trade(proposal)
         assert any("high volatility" in w.lower() for w in score.warnings)
-        assert score.total_score < 85  # Penalized
+        assert score.total_score <= 85  # Penalized (15-point penalty)
 
     @patch("market_checks.VolEngine")
     def test_credit_spread_in_low_vol_penalized(self, mock_vol_cls):
@@ -203,7 +203,7 @@ class TestCheckTrade:
         }
         score = gatekeeper.check_trade(proposal)
         assert any("low volatility" in w.lower() for w in score.warnings)
-        assert score.total_score < 85  # Penalized
+        assert score.total_score <= 85  # Penalized (15-point penalty)
 
 
 class TestTradeScore:
