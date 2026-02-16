@@ -2,6 +2,7 @@
 import json
 import os
 import logging
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 import boto3
@@ -49,7 +50,21 @@ class GatekeeperRequest(BaseModel):
     expiration_date: str
     max_loss: float = 500.0
     quantity: int = 1
-    
+
+    @field_validator("symbol")
+    @classmethod
+    def symbol_upper(cls, v):
+        return v.strip().upper()
+
+class ScanRequest(BaseModel):
+    """Full scan request for dashboard."""
+    symbol: str
+    start_date: str
+    end_date: str
+    top_n: int = 5
+    portfolio_json: str = "[]"
+    policy_mode: str = "tight"
+
     @field_validator("symbol")
     @classmethod
     def symbol_upper(cls, v):
@@ -91,6 +106,85 @@ async def smart_scan(req: ScanRequest):
             content={"status": "error", "output": str(e)}
         )
 
+@app.post("/api/scan")
+def scan(req: ScanRequest):
+    """
+    Full orchestrated scan for the Desk Command dashboard.
+    Returns decision log, picks, rejections, and market context.
+    """
+    logger.info(f"Received dashboard scan for {req.symbol} ({req.start_date} to {req.end_date})")
+    try:
+        # Import here to avoid circular dependencies
+        from agent.orchestrator import full_scan_with_orchestration
+
+        # Parse portfolio
+        portfolio = []
+        if req.portfolio_json.strip():
+            portfolio = json.loads(req.portfolio_json)
+
+        # Run full orchestration
+        decision_log = full_scan_with_orchestration(
+            symbol=req.symbol,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            top_n=req.top_n,
+            portfolio=portfolio,
+            policy_mode=req.policy_mode,
+        )
+
+        # Extract decision log data
+        log_dict = decision_log.to_dict() if hasattr(decision_log, 'to_dict') else {}
+
+        # Map policy mode to dollar amount
+        policy_amounts = {'tight': 1000, 'moderate': 2000, 'aggressive': 5000}
+        policy_amount = policy_amounts.get(req.policy_mode, 1000)
+
+        # Return formatted response for dashboard
+        return {
+            "regime": log_dict.get("regime", "HIGH"),
+            "spyTrend": log_dict.get("spy_trend", "Uptrend"),
+            "macroRisk": log_dict.get("macro_risk", "No macro events"),
+            "policyMode": f"{req.policy_mode.title()} (${policy_amount})",
+            "blockingEvents": log_dict.get("blocking_events", []),
+            "gateFunnel": {
+                "generated": log_dict.get("total_generated", 0),
+                "afterRisk": log_dict.get("after_risk_gate", 0),
+                "afterGatekeeper": log_dict.get("after_gatekeeper", 0),
+                "afterCorrelation": log_dict.get("after_correlation", 0),
+                "final": len(log_dict.get("final_picks", [])),
+            },
+            "picks": log_dict.get("final_picks", []),
+            "rejections": {
+                "risk": log_dict.get("risk_rejections", []),
+                "gatekeeper": log_dict.get("gatekeeper_rejections", []),
+                "correlation": log_dict.get("correlation_rejections", []),
+            },
+            "decisionLog": {
+                "regime": log_dict.get("regime", "HIGH"),
+                "strategyHint": log_dict.get("strategy_hint", "CREDIT_SPREAD"),
+                "blockingEvents": log_dict.get("blocking_events_str", "None"),
+                "generated": log_dict.get("total_generated", 0),
+                "riskPassed": log_dict.get("after_risk_gate", 0),
+                "gatekeeperPassed": log_dict.get("after_gatekeeper", 0),
+                "correlationPassed": log_dict.get("after_correlation", 0),
+                "finalPicks": len(log_dict.get("final_picks", [])),
+                "timestamp": log_dict.get("timestamp", datetime.now().isoformat()),
+            },
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid portfolio JSON: {e}")
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "output": f"Invalid portfolio JSON: {str(e)}"}
+        )
+    except Exception as e:
+        logger.error(f"Scan failed: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "output": f"Scan failed: {str(e)}"}
+        )
+
 @app.post("/api/gatekeeper/check")
 async def gatekeeper_check(req: GatekeeperRequest):
     """
@@ -105,9 +199,9 @@ async def gatekeeper_check(req: GatekeeperRequest):
             "max_loss": req.max_loss,
             "quantity": req.quantity
         }
-        
-        score_card = await gatekeeper.check_trade(proposal)
-        
+
+        score_card = gatekeeper.check_trade(proposal)
+
         return {
             "status": "success",
             "approved": score_card.is_approved,

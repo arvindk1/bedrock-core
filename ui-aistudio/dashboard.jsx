@@ -3,10 +3,97 @@
  *
  * A sophisticated, institutional-grade interface for scan workflow,
  * risk management, and trade decision tracking.
+ *
+ * Backend Integration:
+ * - Calls POST /api/scan with symbol, dates, portfolio, policy
+ * - Expects response with regime, picks, rejections, decisionLog
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './dashboard.css';
+
+// ============================================================================
+// 0️⃣ SCAN FORM COMPONENT
+// ============================================================================
+
+const ScanForm = ({ onSubmit = () => {}, isLoading = false }) => {
+  const [symbol, setSymbol] = useState('NVDA');
+  const [startDate, setStartDate] = useState('2026-03-01');
+  const [endDate, setEndDate] = useState('2026-06-01');
+  const [policyMode, setPolicyMode] = useState('tight');
+  const [portfolioJson, setPortfolioJson] = useState('[]');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      symbol: symbol.toUpperCase(),
+      start_date: startDate,
+      end_date: endDate,
+      portfolio_json: portfolioJson,
+      policy_mode: policyMode,
+      top_n: 5,
+    });
+  };
+
+  return (
+    <div className="scan-form-container">
+      <form onSubmit={handleSubmit} className="scan-form">
+        <div className="form-row">
+          <div className="form-group">
+            <label>Symbol</label>
+            <input
+              type="text"
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              placeholder="NVDA"
+              disabled={isLoading}
+            />
+          </div>
+          <div className="form-group">
+            <label>Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="form-group">
+            <label>End Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="form-group">
+            <label>Policy</label>
+            <select value={policyMode} onChange={(e) => setPolicyMode(e.target.value)} disabled={isLoading}>
+              <option value="tight">Tight ($1,000)</option>
+              <option value="moderate">Moderate ($2,000)</option>
+              <option value="aggressive">Aggressive ($5,000)</option>
+            </select>
+          </div>
+          <button type="submit" disabled={isLoading} className="scan-button">
+            {isLoading ? '⏳ Scanning...' : '🔍 Run Scan'}
+          </button>
+        </div>
+        <div className="form-note">
+          <small>Portfolio (JSON): Leave empty for no positions, or paste current holdings</small>
+          <textarea
+            value={portfolioJson}
+            onChange={(e) => setPortfolioJson(e.target.value)}
+            placeholder='[{"symbol": "QQQ", "max_loss": 500}, ...]'
+            rows="2"
+            disabled={isLoading}
+            className="portfolio-input"
+          />
+        </div>
+      </form>
+    </div>
+  );
+};
 
 // ============================================================================
 // 1️⃣ MARKET CONTEXT COMPONENT
@@ -432,9 +519,42 @@ export default function TradingDashboard() {
   const [selectedPick, setSelectedPick] = useState(null);
   const [showTradeDetail, setShowTradeDetail] = useState(false);
   const [showDecisionLog, setShowDecisionLog] = useState(false);
-  const [activeTab, setActiveTab] = useState('picks'); // 'picks', 'rejections', 'positions'
+  const [activeTab, setActiveTab] = useState('picks');
 
-  // Mock Data
+  // API State
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [scanParams, setScanParams] = useState(null);
+  const [apiData, setApiData] = useState(null);
+
+  // Handle scan submission
+  const handleScan = async (params) => {
+    setIsLoading(true);
+    setError(null);
+    setScanParams(params);
+
+    try {
+      const response = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setApiData(data);
+    } catch (err) {
+      setError(err.message || 'Failed to run scan');
+      console.error('Scan error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Use API data if available, otherwise mock data
   const mockPicks = [
     {
       rank: 1,
@@ -514,6 +634,24 @@ export default function TradingDashboard() {
 
   const mockBlockingEvents = [];
 
+  // Determine what data to use
+  const displayData = apiData || {
+    regime: 'HIGH',
+    spyTrend: 'Uptrend',
+    macroRisk: 'FOMC in 3 days ⚠️',
+    policyMode: 'Tight ($1,000)',
+    blockingEvents: [],
+    gateFunnel: { generated: 12, afterRisk: 9, afterGatekeeper: 6, afterCorrelation: 4, final: 3 },
+    picks: mockPicks,
+    rejections: mockRejections,
+    decisionLog: mockDecisionLog,
+  };
+
+  const picks = displayData.picks || mockPicks;
+  const rejections = displayData.rejections || mockRejections;
+  const decisionLog = displayData.decisionLog || mockDecisionLog;
+  const gateFunnel = displayData.gateFunnel || { generated: 12, afterRisk: 9, afterGatekeeper: 6, afterCorrelation: 4, final: 3 };
+
   return (
     <div className="dashboard">
       {/* Header */}
@@ -524,21 +662,37 @@ export default function TradingDashboard() {
         </div>
       </header>
 
+      {/* Scan Form */}
+      <ScanForm onSubmit={handleScan} isLoading={isLoading} />
+
+      {/* Error Message */}
+      {error && (
+        <div style={{ padding: '20px 40px', background: 'rgba(239, 68, 68, 0.1)', borderLeft: '3px solid #EF4444', margin: '0 40px', borderRadius: '4px' }}>
+          <p style={{ color: '#EF4444', margin: 0 }}>❌ Error: {error}</p>
+        </div>
+      )}
+
       {/* Market Context Bar */}
-      <MarketContext regime="HIGH" spyTrend="Uptrend" macroRisk="FOMC in 3 days ⚠️" policyMode="Tight ($1,000)" />
+      <MarketContext
+        regime={displayData.regime || 'HIGH'}
+        spyTrend={displayData.spyTrend || 'Uptrend'}
+        macroRisk={displayData.macroRisk || 'FOMC in 3 days ⚠️'}
+        policyMode={displayData.policyMode || 'Tight ($1,000)'}
+      />
 
       {/* Main Content */}
       <main className="dashboard-main">
         {/* Blocking Events */}
-        {mockBlockingEvents.length > 0 && <BlockingEventsBanner events={mockBlockingEvents} />}
+        {displayData.blockingEvents && displayData.blockingEvents.length > 0 && <BlockingEventsBanner events={displayData.blockingEvents} />}
 
         {/* Funnel Visualization */}
         <GateFunnel
-          generated={12}
-          afterRisk={9}
-          afterGatekeeper={6}
-          afterCorrelation={4}
-          final={3}
+          generated={gateFunnel.generated}
+          afterRisk={gateFunnel.afterRisk}
+          afterGatekeeper={gateFunnel.afterGatekeeper}
+          afterCorrelation={gateFunnel.afterCorrelation}
+          final={gateFunnel.final}
+          isLoading={isLoading}
         />
 
         {/* Tabs */}
@@ -573,14 +727,14 @@ export default function TradingDashboard() {
           <div className="tabs-content">
             {activeTab === 'picks' && (
               <FinalPicksTable
-                picks={mockPicks}
+                picks={picks}
                 onRowClick={(pick) => {
                   setSelectedPick(pick);
                   setShowTradeDetail(true);
                 }}
               />
             )}
-            {activeTab === 'rejections' && <RejectionsPanel rejections={mockRejections} />}
+            {activeTab === 'rejections' && <RejectionsPanel rejections={rejections} />}
             {activeTab === 'positions' && <TradeManagementView positions={[]} />}
           </div>
         </div>
@@ -593,7 +747,7 @@ export default function TradingDashboard() {
         onClose={() => setShowTradeDetail(false)}
       />
       <DecisionLog
-        log={mockDecisionLog}
+        log={decisionLog}
         isOpen={showDecisionLog}
         onClose={() => setShowDecisionLog(false)}
       />

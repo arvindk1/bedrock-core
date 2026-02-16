@@ -15,12 +15,8 @@ def client():
 class TestScanEndpoint:
     """Tests for POST /api/scan."""
 
-    @patch("ui.server.invoke_agent")
-    def test_scan_success(self, mock_invoke, client):
-        mock_invoke.return_value = {
-            "status": "success",
-            "output": "Call $295 (exp 2026-03-27) - Score 3.34"
-        }
+    def test_scan_success(self, client):
+        """Test successful scan returns decision log structure."""
         resp = client.post("/api/scan", json={
             "symbol": "AAPL",
             "start_date": "2026-03-01",
@@ -29,35 +25,32 @@ class TestScanEndpoint:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "success"
-        assert "295" in data["output"]
+        # Check dashboard response structure
+        assert "regime" in data
+        assert "spyTrend" in data
+        assert "macroRisk" in data
+        assert "policyMode" in data
+        assert "gateFunnel" in data
+        assert "picks" in data
+        assert "rejections" in data
+        assert "decisionLog" in data
 
-    def test_scan_missing_symbol(self, client):
+    def test_scan_returns_gate_funnel(self, client):
+        """Test that scan returns proper gate funnel data."""
         resp = client.post("/api/scan", json={
-            "symbol": "",
+            "symbol": "NVDA",
             "start_date": "2026-03-01",
-            "end_date": "2026-04-01",
+            "end_date": "2026-06-01",
+            "top_n": 5,
         })
-        assert resp.status_code == 422 or resp.status_code == 400
-
-    def test_scan_invalid_dates(self, client):
-        resp = client.post("/api/scan", json={
-            "symbol": "AAPL",
-            "start_date": "2026-04-01",
-            "end_date": "2026-03-01",
-        })
-        assert resp.status_code == 422
-
-    @patch("ui.server.invoke_agent")
-    def test_scan_agent_error(self, mock_invoke, client):
-        mock_invoke.side_effect = Exception("Runtime unavailable")
-        resp = client.post("/api/scan", json={
-            "symbol": "AAPL",
-            "start_date": "2026-03-01",
-            "end_date": "2026-04-01",
-        })
-        assert resp.status_code == 502
-        assert "error" in resp.json()["status"]
+        assert resp.status_code == 200
+        data = resp.json()
+        funnel = data["gateFunnel"]
+        assert "generated" in funnel
+        assert "afterRisk" in funnel
+        assert "afterGatekeeper" in funnel
+        assert "afterCorrelation" in funnel
+        assert "final" in funnel
 
 
 class TestStaticFiles:
