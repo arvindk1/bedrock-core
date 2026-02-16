@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🛡️ Desk Command — Professional Trading Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="dashboard.css">
+  <style>
+    /* Additional demo-specific styles */
+    .demo-note {
+      background: rgba(59, 130, 246, 0.1);
+      border-left: 3px solid #3B82F6;
+      padding: 16px 20px;
+      margin: 20px 40px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    // ============================================================================
+    // MARKET CONTEXT COMPONENT
+    // ============================================================================
+    const MarketContext = ({ regime = 'HIGH', spyTrend = 'Uptrend', macroRisk = 'FOMC in 3 days ⚠️', policyMode = 'Tight' }) => {
+      const regimeColor = {
+        LOW: '#10B981',
+        MEDIUM: '#F59E0B',
+        HIGH: '#EF4444',
+      }[regime] || '#6B7280';
+
+      return (
+        <div className="market-context">
+          <div className="context-item">
+            <span className="context-label">Vol Regime</span>
+            <span className="context-value" style={{ color: regimeColor }}>
+              {regime}
+            </span>
+          </div>
+          <div className="context-divider"></div>
+          <div className="context-item">
+            <span className="context-label">SPY Trend</span>
+            <span className="context-value">{spyTrend}</span>
+          </div>
+          <div className="context-divider"></div>
+          <div className="context-item">
+            <span className="context-label">Macro Risk</span>
+            <span className="context-value warning">{macroRisk}</span>
+          </div>
+          <div className="context-divider"></div>
+          <div className="context-item">
+            <span className="context-label">Policy</span>
+            <span className="context-value">${policyMode}</span>
+          </div>
+        </div>
+      );
+    };
+
+    // ============================================================================
+    // MAIN DASHBOARD APP
+    // ============================================================================
+    function DashboardApp() {
+      const [selectedPick, setSelectedPick] = React.useState(null);
+      const [showTradeDetail, setShowTradeDetail] = React.useState(false);
+      const [activeTab, setActiveTab] = React.useState('picks');
+
+      const mockPicks = [
+        { rank: 1, strategy: 'Bull Call Debit', expiration: 'Mar 20', cost: 1.2, maxLoss: 120, maxProfit: 380, score: 84 },
+        { rank: 2, strategy: 'Bull Call Debit', expiration: 'Mar 20', cost: 1.0, maxLoss: 100, maxProfit: 250, score: 79 },
+        { rank: 3, strategy: 'Bull Call Debit', expiration: 'Mar 20', cost: 0.85, maxLoss: 85, maxProfit: 180, score: 73 },
+      ];
+
+      return (
+        <div className="dashboard">
+          {/* Header */}
+          <header className="dashboard-header">
+            <div className="header-logo">
+              <h1>🛡️ Desk Command</h1>
+              <p className="header-subtitle">Structured Risk Management</p>
+            </div>
+          </header>
+
+          {/* Market Context */}
+          <MarketContext regime="HIGH" spyTrend="Uptrend" macroRisk="FOMC in 3 days ⚠️" policyMode="Tight ($1,000)" />
+
+          {/* Main Content */}
+          <main className="dashboard-main">
+            {/* Gate Funnel */}
+            <div className="gate-funnel">
+              <h3 className="funnel-title">Scan Gate Flow</h3>
+              <div className="funnel-container">
+                {[
+                  { label: 'Generated', value: 12, color: '#3B82F6', max: 12 },
+                  { label: 'Risk Gate', value: 9, color: '#8B5CF6', max: 12 },
+                  { label: 'Gatekeeper', value: 6, color: '#EC4899', max: 12 },
+                  { label: 'Correlation', value: 4, color: '#F59E0B', max: 12 },
+                  { label: 'Final Picks', value: 3, color: '#10B981', max: 12 },
+                ].map((stage, idx) => (
+                  <div key={idx} className="funnel-stage">
+                    <div className="stage-label">
+                      <span className="stage-name">{stage.label}</span>
+                      <span className="stage-count active">{stage.value}</span>
+                    </div>
+                    <div className="stage-bar-container">
+                      <div
+                        className="stage-bar"
+                        style={{
+                          width: `${(stage.value / stage.max) * 100}%`,
+                          backgroundColor: stage.color,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="tabs-container">
+              <div className="tabs-header">
+                <button
+                  className={`tab-button ${activeTab === 'picks' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('picks')}
+                >
+                  📊 Final Picks
+                </button>
+                <button
+                  className={`tab-button ${activeTab === 'rejections' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('rejections')}
+                >
+                  ❌ Rejections
+                </button>
+                <button className="tab-button secondary">📋 Decision Log</button>
+              </div>
+
+              {/* Final Picks Table */}
+              {activeTab === 'picks' && (
+                <div className="final-picks-section">
+                  <h3 className="section-title">Final Picks</h3>
+                  <div className="table-wrapper">
+                    <table className="picks-table">
+                      <thead>
+                        <tr>
+                          <th>Rank</th>
+                          <th>Strategy</th>
+                          <th>Exp</th>
+                          <th>Cost</th>
+                          <th>Max Loss</th>
+                          <th>Max Profit</th>
+                          <th>Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mockPicks.map(pick => (
+                          <tr key={pick.rank} className="pick-row" onClick={() => { setSelectedPick(pick); setShowTradeDetail(true); }}>
+                            <td className="rank-cell">{pick.rank}</td>
+                            <td className="strategy-cell">{pick.strategy}</td>
+                            <td className="exp-cell">{pick.expiration}</td>
+                            <td className="cost-cell">${pick.cost.toFixed(2)}</td>
+                            <td className="loss-cell"><span className="risk-value">${pick.maxLoss}</span></td>
+                            <td className="profit-cell"><span className="reward-value">${pick.maxProfit}</span></td>
+                            <td className="score-cell">
+                              <div className="score-badge" style={{ backgroundColor: `rgba(16, 185, 129, ${pick.score / 100})` }}>
+                                {pick.score}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Rejections Tab */}
+              {activeTab === 'rejections' && (
+                <div className="rejections-panel">
+                  <h3 className="section-title">Rejections & Filtering</h3>
+                  <div className="rejections-grid">
+                    <div className="rejection-category">
+                      <h4 style={{ color: '#EF4444' }}>❌ Risk Rejections</h4>
+                      <ul className="rejection-list">
+                        <li>Max loss $1,500 exceeds limit $1,000</li>
+                        <li>Sector Technology cap exceeded</li>
+                        <li>Concentration: Already 3x NVDA exposure</li>
+                      </ul>
+                    </div>
+                    <div className="rejection-category">
+                      <h4 style={{ color: '#F59E0B' }}>❌ Gatekeeper Rejections</h4>
+                      <ul className="rejection-list">
+                        <li>Leg 1 bid/ask spread too wide (1.8% > 1.5%)</li>
+                        <li>Market impact 3.2% exceeds 2% threshold</li>
+                        <li>Open interest below threshold for short strike</li>
+                      </ul>
+                    </div>
+                    <div className="rejection-category">
+                      <h4 style={{ color: '#8B5CF6' }}>❌ Correlation Rejections</h4>
+                      <ul className="rejection-list">
+                        <li>Correlation 0.78 with AAPL exceeds 0.70 threshold</li>
+                        <li>Correlation 0.72 with QQQ exceeds 0.70 threshold</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<DashboardApp />, document.getElementById('app'));
+  </script>
+</body>
+</html>

@@ -7,6 +7,9 @@ Three tool surface: simple scan, orchestrated scan, risk check.
 import json
 import logging
 from strands.tools import tool
+from options_scanner import find_cheapest_options
+from orchestrator import full_scan_with_orchestration
+from risk_engine import RiskEngine
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +37,12 @@ def scan_options(symbol: str, start_date: str, end_date: str, top_n: int = 5) ->
     Returns:
         A formatted table of ranked contracts, or an error string.
     """
-    from options_scanner import find_cheapest_options
-
     try:
         return find_cheapest_options(symbol, start_date, end_date, top_n)
     except ValueError as e:
         return f"Error: {e}"
     except Exception as e:
-        return f"Error scanning options for {symbol}: {type(e).__name__}: {e}"
+        return f"Error scanning options for {symbol}"
 
 
 # ============================================================================
@@ -81,8 +82,6 @@ def scan_options_with_strategy(
         - Candidates rejected (with reasons)
         - Final top N picks
     """
-    from orchestrator import full_scan_with_orchestration
-
     try:
         # Parse portfolio JSON
         portfolio = json.loads(portfolio_json) if portfolio_json.strip() else []
@@ -136,8 +135,6 @@ def check_trade_risk(
     Returns:
         Approval status + detailed reasoning.
     """
-    from risk_engine import RiskEngine
-
     try:
         portfolio = json.loads(portfolio_json) if portfolio_json.strip() else []
 

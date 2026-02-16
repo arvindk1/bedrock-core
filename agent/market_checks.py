@@ -337,3 +337,9 @@ class ScoredGatekeeper:
             },
         )
         return False, reason, penalty
+
+
+# ====================================================================
+# Module-level instance for direct usage (e.g., from UI server)
+# ====================================================================
+gatekeeper = ScoredGatekeeper()
