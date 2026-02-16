@@ -215,6 +215,15 @@ class OptionsScanner:
                                 "implied_volatility": float(short_leg.get("impliedVolatility", 0)),
                             }
 
+                            # ============================================================
+                            # SANITY CHECK: Drop candidates with garbage quotes (0/NaN bid/ask)
+                            # yfinance can return 0 or NaN for illiquid options
+                            # ============================================================
+                            if (long_leg_enriched["bid"] <= 0 or long_leg_enriched["ask"] <= 0 or
+                                short_leg_enriched["bid"] <= 0 or short_leg_enriched["ask"] <= 0):
+                                logger.debug(f"Skipping {symbol} spread: garbage quotes (bid/ask = 0 or missing)")
+                                continue
+
                             net_debit = long_leg["ask"] - short_leg["bid"]  # Conservative
                             details = {
                                 "symbol": symbol,

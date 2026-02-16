@@ -161,6 +161,9 @@ class ScoredGatekeeper:
         """
         Check liquidity using Phase-2 spec: min Open Interest as proxy capacity.
 
+        NOTE: OI is a practical proxy for liquidity, not perfect. Ideal would be min(OI, 10*Volume)
+        or NBBO depth, but yfinance doesn't reliably provide those. OI works for small traders.
+
         Liquidity capacity = min(OI) across all legs (in contracts)
         Target size = 1 spread (100 shares = 1 contract)
         Pass if market_impact < 2% of available liquidity
