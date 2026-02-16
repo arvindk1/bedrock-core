@@ -1,13 +1,17 @@
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
-# Mock strands_agents before importing tools
+# Mock strands before importing tools
 mock_strands = MagicMock()
-mock_strands.tool = lambda f: f  # @tool decorator is a passthrough
-sys.modules["strands_agents"] = mock_strands
+mock_strands.tools.tool = lambda f: f  # @tool decorator is a passthrough
+sys.modules["strands"] = mock_strands
+sys.modules["strands.tools"] = mock_strands.tools
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
 import importlib
-import delete.tools as tools
+import tools
 
 
 def setup_module():

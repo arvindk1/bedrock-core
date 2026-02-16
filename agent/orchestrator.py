@@ -147,7 +147,8 @@ def vol_and_events_context(symbol: str, dte: int) -> Dict[str, Any]:
         event_loader = EventLoader()
 
         # Vol regime
-        regime, vol_details = vol_engine.detect_regime(symbol)
+        regime = vol_engine.detect_regime(symbol)
+        vol_details = vol_engine.calculate_volatility(symbol)
 
         # Events
         blocking = event_loader.get_blocking_events(symbol, dte)
@@ -213,7 +214,8 @@ def full_scan_with_orchestration(
     3. Candidate Scan → Raw spreads with Phase-2 enrichment
     4. Risk Gate → Reject on concentration/drawdown
     5. ScoredGatekeeper → Soft scoring (liquidity + spreads + regime alignment)
-    6. Final Ranking → Sort by gatekeeper score + profit/cost ratio
+    6. Correlation Gate → Filter by portfolio diversification
+    7. Final Ranking → Sort by gatekeeper score + profit/cost ratio
 
     Args:
         symbol: Ticker
@@ -329,15 +331,28 @@ def full_scan_with_orchestration(
                 candidate["gatekeeper_warnings"] = score.warnings
                 scored_candidates.append(candidate)
             else:
-                log.rejections_correlation.append(
-                    (candidate, f"Gatekeeper score {score.total_score:.0f} below threshold")
-                )
                 logger.debug(f"Gatekeeper rejected {symbol}: {score.rejection_reason}")
-
-        log.candidates_after_correlation = scored_candidates
 
         if not scored_candidates:
             logger.info(f"No candidates passed gatekeeper for {symbol}")
+            log.final_picks = []
+            return log
+
+        # ====================================================================
+        # TASK 4: Correlation Gate (Portfolio Diversification Check)
+        # ====================================================================
+        from correlation_gate import CorrelationGate
+
+        corr_gate = CorrelationGate()
+        after_correlation, corr_rejections = corr_gate.filter_candidates(
+            scored_candidates, portfolio
+        )
+
+        log.candidates_after_correlation = after_correlation
+        log.rejections_correlation = corr_rejections
+
+        if not after_correlation:
+            logger.info(f"No candidates passed correlation gate for {symbol}")
             log.final_picks = []
             return log
 
@@ -346,7 +361,7 @@ def full_scan_with_orchestration(
         # ====================================================================
         # Sort by gatekeeper score (primary) + profit/cost ratio (secondary)
         final = sorted(
-            scored_candidates,
+            after_correlation,
             key=lambda x: (
                 -x.get("gatekeeper_score", 0),  # Higher score first (negate for descending)
                 -(x.get("max_profit", 0) / x.get("cost", 1) if x.get("cost", 0) > 0 else 0),
@@ -356,7 +371,8 @@ def full_scan_with_orchestration(
         log.final_picks = final[:top_n]
         logger.info(
             f"Orchestration complete: {len(log.final_picks)} picks for {symbol} "
-            f"(risk: {len(accepted_after_risk)}, gatekeeper: {len(scored_candidates)})"
+            f"(risk: {len(accepted_after_risk)}, gatekeeper: {len(scored_candidates)}, "
+            f"correlation: {len(after_correlation)})"
         )
 
         return log

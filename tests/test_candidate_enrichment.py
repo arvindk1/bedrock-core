@@ -252,9 +252,10 @@ class TestOrchestratorGatekeeperIntegration:
             policy_mode="tight",
         )
 
-        # Candidate should be rejected
+        # Candidate should be rejected by gatekeeper (doesn't reach correlation gate)
         assert len(log.final_picks) == 0
-        assert len(log.rejections_correlation) > 0
+        # Gatekeeper rejects, so it doesn't appear in candidates_after_correlation
+        assert len(log.candidates_after_correlation) == 0
 
 
 class TestCandidateFieldAccuracy:

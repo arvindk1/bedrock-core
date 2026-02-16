@@ -1,11 +1,15 @@
 import math
+import os
+import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 
-from delete.options_scanner import (
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
+
+from options_scanner import (
     calculate_greeks,
     fetch_options_chain,
     find_cheapest_options,
