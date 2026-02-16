@@ -17,7 +17,53 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from reason_codes import is_structured_reason, parse_reason_code, extract_reason_summary
+
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def format_reason_for_display(reason: Optional[str]) -> str:
+    """
+    Format a rejection reason for human-readable display.
+
+    If it's a structured code, extract the human-readable summary.
+    Otherwise, return as-is.
+    """
+    if not reason:
+        return "Unknown"
+
+    if is_structured_reason(reason):
+        return extract_reason_summary(reason)
+
+    return reason
+
+
+def format_event_for_display(event: Dict[str, Any]) -> str:
+    """
+    Format a blocking event for human-readable display.
+
+    Handles both free-text and structured reason codes.
+    """
+    if "reason_code" in event and is_structured_reason(event["reason_code"]):
+        parsed = parse_reason_code(event["reason_code"])
+        rule = parsed.get("rule", "UNKNOWN")
+        context = parsed.get("context", {})
+        days_until = context.get("days_until", "?")
+        name = event.get("name", context.get("name", rule))
+        return f"{name} ({days_until} days until)"
+
+    # Fallback for older format
+    event_type = event.get("type", "unknown")
+    if event_type == "earnings":
+        return f"Earnings ({event.get('earnings_days', '?')} days until)"
+    elif event_type == "macro":
+        return f"{event.get('name', 'Event')} ({event.get('days_until', '?')} days until)"
+    else:
+        return event.get("description", str(event))
 
 
 # ============================================================================
@@ -73,7 +119,8 @@ class DecisionLog:
 
         if self.blocking_events:
             for event in self.blocking_events:
-                output += f"    ⚠️  {event.get('description', event)}\n"
+                formatted = format_event_for_display(event)
+                output += f"    ⚠️  {formatted}\n"
 
         # Candidates Flow
         output += f"\n📈 CANDIDATES:\n"
@@ -86,12 +133,14 @@ class DecisionLog:
         if self.rejections_risk:
             output += f"\n❌ RISK REJECTIONS ({len(self.rejections_risk)}):\n"
             for candidate, reason in self.rejections_risk[:5]:
-                output += f"  - {candidate.get('strategy', '?')} @ {candidate.get('strike_long', '?')}: {reason}\n"
+                formatted_reason = format_reason_for_display(reason)
+                output += f"  - {candidate.get('strategy', '?')} @ {candidate.get('strike_long', '?')}: {formatted_reason}\n"
 
         if self.rejections_correlation:
             output += f"\n❌ CORRELATION REJECTIONS ({len(self.rejections_correlation)}):\n"
             for candidate, reason in self.rejections_correlation[:5]:
-                output += f"  - {candidate.get('strategy', '?')}: {reason}\n"
+                formatted_reason = format_reason_for_display(reason)
+                output += f"  - {candidate.get('strategy', '?')}: {formatted_reason}\n"
 
         # Final picks
         if self.final_picks:
