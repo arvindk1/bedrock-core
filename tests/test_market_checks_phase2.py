@@ -13,6 +13,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
 from market_checks import ScoredGatekeeper, TradeScore
+from reason_codes import is_structured_reason, parse_reason_code
 
 
 class TestScoredGatekeeperInit:
@@ -56,7 +57,11 @@ class TestLiquidityCheck:
         ]
         score, reason, penalty = gatekeeper._check_liquidity({"legs": legs})
         assert penalty > 0
-        assert "Market impact" in reason
+        # Verify structured reason code
+        assert is_structured_reason(reason)
+        parsed = parse_reason_code(reason)
+        assert parsed["rule"] == "LIQUIDITY"
+        assert parsed["context"]["impact_pct"] == 100
 
     def test_no_liquidity_data_hard_penalty(self):
         """No OI/NBBO → can't calculate → max penalty."""
@@ -65,7 +70,11 @@ class TestLiquidityCheck:
         score, reason, penalty = gatekeeper._check_liquidity({"legs": legs})
         assert score == 0.0
         assert penalty == 50
-        assert "No liquidity data" in reason
+        # Verify structured reason code
+        assert is_structured_reason(reason)
+        parsed = parse_reason_code(reason)
+        assert parsed["rule"] == "LIQUIDITY"
+        assert parsed["context"]["reason"] == "no_oi_data"
 
 
 class TestSpreadCheck:
@@ -109,7 +118,11 @@ class TestSpreadCheck:
         ]
         ok, reason, penalty = gatekeeper._check_spreads({"legs": legs})
         assert ok is False
-        assert "Leg 1" in reason  # Second leg is worst
+        # Verify structured reason code
+        assert is_structured_reason(reason)
+        parsed = parse_reason_code(reason)
+        assert parsed["rule"] == "SPREAD_TOO_WIDE"
+        assert parsed["context"]["leg"] == 1  # Second leg is worst
 
 
 class TestCheckTrade:
@@ -181,7 +194,9 @@ class TestCheckTrade:
             ],
         }
         score = gatekeeper.check_trade(proposal)
-        assert any("high volatility" in w.lower() for w in score.warnings)
+        # Check for structured IV_PENALTY codes in warnings
+        iv_warnings = [w for w in score.warnings if is_structured_reason(w) and "IV_PENALTY" in w]
+        assert len(iv_warnings) > 0
         assert score.total_score <= 85  # Penalized (15-point penalty)
 
     @patch("market_checks.VolEngine")
@@ -202,7 +217,9 @@ class TestCheckTrade:
             ],
         }
         score = gatekeeper.check_trade(proposal)
-        assert any("low volatility" in w.lower() for w in score.warnings)
+        # Check for structured IV_PENALTY codes in warnings
+        iv_warnings = [w for w in score.warnings if is_structured_reason(w) and "IV_PENALTY" in w]
+        assert len(iv_warnings) > 0
         assert score.total_score <= 85  # Penalized (15-point penalty)
 
 

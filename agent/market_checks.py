@@ -21,6 +21,7 @@ import pandas as pd
 from event_loader import EventLoader
 from market_data import MarketData
 from vol_engine import VolEngine, VolatilityModel
+from reason_codes import Rules, format_reason_code, GATE_GATEKEEP
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,18 @@ class TradeScore:
     total_score: float  # 0-100
     is_approved: bool
     rejection_reason: Optional[str]
-    warnings: List[str]
-    score_breakdown: Dict[str, float]
-    details: Dict[str, Any]
+    reason_code: Optional[str] = None  # Structured reason code (GATEKEEP_REJECT|rule=...)
+    warnings: List[str] = None
+    score_breakdown: Dict[str, float] = None
+    details: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.warnings is None:
+            self.warnings = []
+        if self.score_breakdown is None:
+            self.score_breakdown = {}
+        if self.details is None:
+            self.details = {}
 
 
 class ScoredGatekeeper:
@@ -125,14 +135,36 @@ class ScoredGatekeeper:
                 penalty = 15
                 score -= penalty
                 breakdown["Low IV Penalty (Credit Strat)"] = -penalty
-                warnings.append("Selling premium in low volatility environment")
+                iv_warning = format_reason_code(
+                    gate=GATE_GATEKEEP,
+                    rule=Rules.Gatekeep.IV_PENALTY,
+                    context={
+                        "symbol": symbol,
+                        "strategy": strategy,
+                        "condition": "low_vol_credit",
+                        "iv": round(iv_annual, 3),
+                        "threshold": 0.20,
+                    },
+                )
+                warnings.append(iv_warning)
 
             # If buying premium in high vol, penalize
             if is_debit_strategy and iv_annual > 0.50:
                 penalty = 15
                 score -= penalty
                 breakdown["High IV Penalty (Debit Strat)"] = -penalty
-                warnings.append("Buying premium in high volatility environment")
+                iv_warning = format_reason_code(
+                    gate=GATE_GATEKEEP,
+                    rule=Rules.Gatekeep.IV_PENALTY,
+                    context={
+                        "symbol": symbol,
+                        "strategy": strategy,
+                        "condition": "high_vol_debit",
+                        "iv": round(iv_annual, 3),
+                        "threshold": 0.50,
+                    },
+                )
+                warnings.append(iv_warning)
 
         except Exception as e:
             logger.warning(f"Vol check failed: {e}")
@@ -144,6 +176,21 @@ class ScoredGatekeeper:
         min_passing_score = 70.0
         is_approved = score >= min_passing_score
 
+        # Generate structured reason code on rejection
+        reason_code = None
+        if not is_approved:
+            reason_code = format_reason_code(
+                gate=GATE_GATEKEEP,
+                rule=Rules.Gatekeep.LOW_SCORE,
+                context={
+                    "symbol": symbol,
+                    "strategy": strategy,
+                    "score": round(score, 1),
+                    "threshold": min_passing_score,
+                    "deficit": round(min_passing_score - score, 1),
+                },
+            )
+
         return TradeScore(
             symbol=symbol,
             strategy=strategy,
@@ -152,6 +199,7 @@ class ScoredGatekeeper:
             rejection_reason=None
             if is_approved
             else f"Score {score:.0f} below threshold {min_passing_score}",
+            reason_code=reason_code,
             warnings=warnings,
             score_breakdown=breakdown,
             details=details,
@@ -173,7 +221,17 @@ class ScoredGatekeeper:
         """
         legs = trade_proposal.get("legs", [])
         if not legs:
-            return 50.0, "No legs found", 20  # Unknown liquidity, light penalty
+            reason = format_reason_code(
+                gate=GATE_GATEKEEP,
+                rule=Rules.Gatekeep.LIQUIDITY,
+                context={
+                    "symbol": trade_proposal.get("symbol", "?"),
+                    "reason": "no_legs",
+                    "impact_pct": 0,
+                    "threshold": 2.0,
+                },
+            )
+            return 50.0, reason, 20  # Unknown liquidity, light penalty
 
         # Compute liquidity capacity from OI (proxy): min OI across all legs
         min_oi = float("inf")
@@ -186,7 +244,17 @@ class ScoredGatekeeper:
                 has_oi = True
 
         if not has_oi or min_oi == float("inf"):
-            return 0.0, "No liquidity data available (open interest required)", 50  # Hard penalty
+            reason = format_reason_code(
+                gate=GATE_GATEKEEP,
+                rule=Rules.Gatekeep.LIQUIDITY,
+                context={
+                    "symbol": trade_proposal.get("symbol", "?"),
+                    "reason": "no_oi_data",
+                    "impact_pct": 100,
+                    "threshold": 2.0,
+                },
+            )
+            return 0.0, reason, 50  # Hard penalty
 
         # Liquidity capacity = min_oi (contracts directly)
         # Target size = 1 contract (100 shares)
@@ -197,9 +265,19 @@ class ScoredGatekeeper:
         # 2% threshold enforced
         if market_impact_pct > 2.0:
             penalty = min(30, int(market_impact_pct / 2))  # Escalate penalty
+            reason = format_reason_code(
+                gate=GATE_GATEKEEP,
+                rule=Rules.Gatekeep.LIQUIDITY,
+                context={
+                    "symbol": trade_proposal.get("symbol", "?"),
+                    "impact_pct": round(market_impact_pct, 1),
+                    "threshold": 2.0,
+                    "min_oi": int(min_oi),
+                },
+            )
             return (
                 max(0, 100 - penalty),
-                f"Market impact {market_impact_pct:.1f}% (> 2% threshold, min OI {min_oi})",
+                reason,
                 penalty,
             )
 
@@ -223,6 +301,7 @@ class ScoredGatekeeper:
 
         worst_spread_pct = 0.0
         worst_leg = None
+        worst_bid = 0
 
         for i, leg in enumerate(legs):
             bid = leg.get("bid", 0)
@@ -239,13 +318,22 @@ class ScoredGatekeeper:
                 if spread_pct > worst_spread_pct:
                     worst_spread_pct = spread_pct
                     worst_leg = i
+                    worst_bid = bid
 
         if worst_spread_pct == 0:
             return True, None, 0  # No spreads or all acceptable
 
         # Spread is too wide
         penalty = min(30, int(worst_spread_pct * 100))  # Scale penalty
-        reason = (
-            f"Leg {worst_leg} spread {worst_spread_pct:.2%} exceeds threshold"
+        reason = format_reason_code(
+            gate=GATE_GATEKEEP,
+            rule=Rules.Gatekeep.SPREAD_TOO_WIDE,
+            context={
+                "symbol": trade_proposal.get("symbol", "?"),
+                "leg": worst_leg,
+                "spread_pct": round(worst_spread_pct * 100, 1),
+                "bid": round(worst_bid, 2),
+                "threshold": 1.0,  # default threshold in percentage
+            },
         )
         return False, reason, penalty
