@@ -257,6 +257,8 @@ def full_scan_with_orchestration(
         # ====================================================================
         # BASE: Generate raw candidates (no gating)
         # ====================================================================
+        from options_scanner import generate_candidates
+
         candidates = generate_candidates(symbol, start_date, end_date)
         log.candidates_raw = candidates
 
@@ -267,19 +269,23 @@ def full_scan_with_orchestration(
         # ====================================================================
         # TASK 1: Apply Risk Gate
         # ====================================================================
+        from risk_engine import RiskEngine
+
         max_risk = policy_to_limit(policy_mode)
         risk_engine = RiskEngine(max_risk_per_trade=max_risk)
 
         accepted_after_risk = []
         for candidate in candidates:
-            # Ensure candidate has max_loss
-            if "max_loss" not in candidate:
-                candidate["max_loss"] = candidate.get("cost", 0)
-            if "strategy_type" not in candidate:
-                candidate["strategy_type"] = candidate.get("strategy", "UNKNOWN")
+            # Normalize candidate fields for risk gating
+            trade_proposal = {
+                "symbol": candidate.get("symbol", symbol),
+                "strategy_type": candidate.get("strategy", "UNKNOWN"),
+                "max_loss": candidate.get("cost", 0),
+                "sector": symbol,
+            }
 
             rejected, reason = risk_engine.should_reject_trade(
-                candidate,
+                trade_proposal,
                 portfolio,
                 {},  # market_context (no drawdown check for now)
             )
@@ -298,30 +304,58 @@ def full_scan_with_orchestration(
             return log
 
         # ====================================================================
-        # TASK 4: Apply Correlation Gate (Placeholder for now)
+        # GATEKEEPER SCORING (Phase-2): Liquidity + Spreads + Regime
         # ====================================================================
-        # Correlation gate requires portfolio_prices which must be provided
-        # by the caller in market_context. For now, we skip it.
-        # See: docs/plans/2026-02-15-phase2-seams-and-tasks.md TASK 4
+        from market_checks import ScoredGatekeeper
 
-        log.candidates_after_correlation = accepted_after_risk
+        gatekeeper = ScoredGatekeeper()
+        scored_candidates = []
+
+        for candidate in accepted_after_risk:
+            # Normalize candidate fields for gatekeeper
+            trade_proposal = {
+                "symbol": candidate.get("symbol", symbol),
+                "strategy_type": candidate.get("strategy", "UNKNOWN"),
+                "expiration_date": candidate.get("expiration", ""),
+                "legs": candidate.get("legs", []),
+            }
+
+            score = gatekeeper.check_trade(trade_proposal)
+
+            if score.is_approved:
+                candidate["gatekeeper_score"] = score.total_score
+                candidate["gatekeeper_warnings"] = score.warnings
+                scored_candidates.append(candidate)
+            else:
+                log.rejections_correlation.append(
+                    (candidate, f"Gatekeeper score {score.total_score:.0f} below threshold")
+                )
+                logger.debug(f"Gatekeeper rejected {symbol}: {score.rejection_reason}")
+
+        log.candidates_after_correlation = scored_candidates
+
+        if not scored_candidates:
+            logger.info(f"No candidates passed gatekeeper for {symbol}")
+            log.final_picks = []
+            return log
 
         # ====================================================================
         # Sort and return top N
         # ====================================================================
-        # Sort by profit/cost ratio
+        # Sort by gatekeeper score (primary) + profit/cost ratio (secondary)
         final = sorted(
-            accepted_after_risk,
+            scored_candidates,
             key=lambda x: (
-                x.get("max_profit", 0) / x.get("cost", 1)
-                if x.get("cost", 0) > 0
-                else 0
+                -x.get("gatekeeper_score", 0),  # Higher score first (negate for descending)
+                -(x.get("max_profit", 0) / x.get("cost", 1) if x.get("cost", 0) > 0 else 0),
             ),
-            reverse=True,
         )
 
         log.final_picks = final[:top_n]
-        logger.info(f"Orchestration complete: {len(log.final_picks)} picks for {symbol}")
+        logger.info(
+            f"Orchestration complete: {len(log.final_picks)} picks for {symbol} "
+            f"(risk: {len(accepted_after_risk)}, gatekeeper: {len(scored_candidates)})"
+        )
 
         return log
 

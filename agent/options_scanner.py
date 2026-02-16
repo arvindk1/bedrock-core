@@ -174,18 +174,48 @@ class OptionsScanner:
                         if 0.20 <= greeks_s["delta"] <= 0.35:
                             # Valid Debit Spread Candidate
                             width = short_leg["strike"] - long_leg["strike"]
+
+                            # ============================================================
+                            # PHASE 2: Enrich legs with option-level liquidity fields
+                            # (Required by ScoredGatekeeper for bid/ask/OI scoring)
+                            # ============================================================
+                            long_leg_enriched = {
+                                "side": "buy",
+                                "strike": float(long_leg["strike"]),
+                                "type": "call",
+                                "delta": float(delta),
+                                # Phase-2 fields (for gatekeeper liquidity/spread checks)
+                                "bid": float(long_leg.get("bid", 0)),
+                                "ask": float(long_leg.get("ask", 0)),
+                                "open_interest": int(long_leg.get("openInterest", 0)),
+                                "volume": int(long_leg.get("volume", 0)),
+                                "last_price": float(long_leg.get("lastPrice", 0)),
+                                "implied_volatility": float(long_leg.get("impliedVolatility", 0)),
+                            }
+
+                            short_leg_enriched = {
+                                "side": "sell",
+                                "strike": float(short_leg["strike"]),
+                                "type": "call",
+                                "delta": float(greeks_s["delta"]),
+                                # Phase-2 fields
+                                "bid": float(short_leg.get("bid", 0)),
+                                "ask": float(short_leg.get("ask", 0)),
+                                "open_interest": int(short_leg.get("openInterest", 0)),
+                                "volume": int(short_leg.get("volume", 0)),
+                                "last_price": float(short_leg.get("lastPrice", 0)),
+                                "implied_volatility": float(short_leg.get("impliedVolatility", 0)),
+                            }
+
                             details = {
                                 "symbol": symbol,
                                 "strategy": "BULL_CALL_DEBIT_SPREAD",
                                 "expiration": expiry,
-                                "legs": [
-                                    {"side": "buy", "strike": long_leg["strike"], "type": "call", "delta": delta},
-                                    {"side": "sell", "strike": short_leg["strike"], "type": "call", "delta": greeks_s["delta"]}
-                                ],
+                                "legs": [long_leg_enriched, short_leg_enriched],
                                 "width": width,
-                                "cost": long_leg["ask"] - short_leg["bid"], # Conservative
+                                "cost": long_leg["ask"] - short_leg["bid"],  # Conservative
                                 "max_profit": width - (long_leg["ask"] - short_leg["bid"]),
-                                "description": f"Long {long_leg['strike']} / Short {short_leg['strike']} Call Spread"
+                                "description": f"Long {long_leg['strike']} / Short {short_leg['strike']} Call Spread",
                             }
                             # Basic filtering: Risk/Reward
                             if details["cost"] > 0 and details["max_profit"] / details["cost"] > 1.5:
