@@ -179,7 +179,9 @@ class TestDrawdownCircuitBreaker:
 
         rejected, reason = engine.should_reject_trade(trade, portfolio, market_context)
         assert rejected is True
-        assert "circuit breaker" in reason.lower()
+        # Check for structured reason code format
+        assert "RISK_REJECT" in reason or "rule=" in reason
+        assert "DRAWDOWN_HALT" in reason or "drawdown" in reason.lower()
 
     def test_zero_portfolio_value_no_halt(self):
         """Zero portfolio value, should not halt (no division by zero)."""

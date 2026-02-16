@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from reason_codes import Rules, format_reason_code, GATE_RISK
+
 logger = logging.getLogger(__name__)
 
 
@@ -172,14 +174,29 @@ class RiskEngine:
         # 1. Trade MUST declare max_loss
         max_loss = trade.get("max_loss")
         if max_loss is None:
-            return True, "Rejected: trade missing max_loss field — cannot size risk"
+            reason = format_reason_code(
+                gate=GATE_RISK,
+                rule=Rules.Risk.NO_MAX_LOSS,
+                context={
+                    "symbol": trade.get("symbol", "?"),
+                    "strategy": trade.get("strategy_type", "?"),
+                },
+            )
+            return True, reason
 
         # 2. Max loss per trade
         if max_loss > self.max_risk_per_trade:
-            return (
-                True,
-                f"Rejected: max_loss ${max_loss:.0f} exceeds per-trade risk limit ${self.max_risk_per_trade:.0f}",
+            reason = format_reason_code(
+                gate=GATE_RISK,
+                rule=Rules.Risk.MAX_LOSS_EXCEEDED,
+                context={
+                    "symbol": trade.get("symbol", "?"),
+                    "proposed": max_loss,
+                    "limit": self.max_risk_per_trade,
+                    "excess_pct": round((max_loss / self.max_risk_per_trade - 1) * 100),
+                },
             )
+            return True, reason
 
         # 3. Sector concentration check
         sector_rejected, sector_reason = self._check_sector_concentration(
@@ -193,12 +210,19 @@ class RiskEngine:
             daily_pnl = market_context.get("daily_pnl", 0.0)
             portfolio_value = market_context.get("portfolio_value", 0.0)
             if portfolio_value > 0 and self.check_drawdown_halt(daily_pnl, portfolio_value):
-                return (
-                    True,
-                    f"Rejected: circuit breaker triggered — daily loss "
-                    f"${abs(daily_pnl):.0f} exceeds {self.drawdown_halt_pct:.0%} of "
-                    f"${portfolio_value:.0f}",
+                loss_pct = round(abs(daily_pnl) / portfolio_value * 100, 1)
+                reason = format_reason_code(
+                    gate=GATE_RISK,
+                    rule=Rules.Risk.DRAWDOWN_HALT,
+                    context={
+                        "symbol": trade.get("symbol", "?"),
+                        "daily_loss": abs(daily_pnl),
+                        "portfolio_value": portfolio_value,
+                        "loss_pct": loss_pct,
+                        "limit": round(self.drawdown_halt_pct * 100, 1),
+                    },
                 )
+                return True, reason
 
         return False, None
 
@@ -234,11 +258,19 @@ class RiskEngine:
 
         sector_pct = sector_risk / total_risk
         if sector_pct > self.max_sector_pct:
-            return (
-                True,
-                f"Rejected: {trade_sector} sector would be {sector_pct:.0%} of risk "
-                f"(limit {self.max_sector_pct:.0%})",
+            reason = format_reason_code(
+                gate=GATE_RISK,
+                rule=Rules.Risk.SECTOR_CAP,
+                context={
+                    "symbol": trade.get("symbol", "?"),
+                    "sector": trade_sector,
+                    "used": sector_risk,
+                    "limit": total_risk * self.max_sector_pct,
+                    "used_pct": round(sector_pct * 100),
+                    "limit_pct": round(self.max_sector_pct * 100),
+                },
             )
+            return True, reason
 
         return False, None
 
