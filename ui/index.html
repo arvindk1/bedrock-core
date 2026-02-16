@@ -1,549 +1,809 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Options Scanner</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Options Scanner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  :root {
-    --bg-primary: #0a0e14;
-    --bg-secondary: #111820;
-    --bg-card: #151c26;
-    --bg-input: #0d1219;
-    --border: #1e2a38;
-    --border-focus: #00e08e;
-    --accent: #00e08e;
-    --accent-dim: #00c07a;
-    --accent-glow: rgba(0, 224, 142, 0.15);
-    --text-primary: #e4e8ee;
-    --text-secondary: #7a8ba0;
-    --text-muted: #4a5a6e;
-    --error: #ff4d6a;
-    --error-bg: rgba(255, 77, 106, 0.08);
-    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-    --font-sans: 'DM Sans', system-ui, sans-serif;
-  }
+    :root {
+      --bg-primary: #0a0e14;
+      --bg-secondary: #111820;
+      --bg-card: #151c26;
+      --bg-input: #0d1219;
+      --border: #1e2a38;
+      --border-focus: #00e08e;
+      --accent: #00e08e;
+      --accent-dim: #00c07a;
+      --accent-glow: rgba(0, 224, 142, 0.15);
+      --text-primary: #e4e8ee;
+      --text-secondary: #7a8ba0;
+      --text-muted: #4a5a6e;
+      --error: #ff4d6a;
+      --error-bg: rgba(255, 77, 106, 0.08);
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+      --font-sans: 'DM Sans', system-ui, sans-serif;
+    }
 
-  body {
-    font-family: var(--font-sans);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    position: relative;
-    overflow-x: hidden;
-  }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      overflow-x: hidden;
+    }
 
-  /* Subtle scan-line overlay */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0, 0, 0, 0.03) 2px,
-      rgba(0, 0, 0, 0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 9999;
-  }
+    /* Subtle scan-line overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.03) 2px,
+          rgba(0, 0, 0, 0.03) 4px);
+      pointer-events: none;
+      z-index: 9999;
+    }
 
-  /* Grid background pattern */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(30, 42, 56, 0.3) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(30, 42, 56, 0.3) 1px, transparent 1px);
-    background-size: 60px 60px;
-    pointer-events: none;
-    z-index: 0;
-  }
+    /* Grid background pattern */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(30, 42, 56, 0.3) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30, 42, 56, 0.3) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
 
-  .container {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    max-width: 640px;
-    padding: 2rem 1.5rem;
-  }
+    .container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 640px;
+      padding: 2rem 1.5rem;
+    }
 
-  /* Header */
-  header {
-    margin-bottom: 2.5rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border);
-    position: relative;
-  }
+    /* Header */
+    header {
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
 
-  header::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    width: 80px;
-    height: 1px;
-    background: var(--accent);
-    box-shadow: 0 0 12px var(--accent-glow);
-  }
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 80px;
+      height: 1px;
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
 
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
-  }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
 
-  .logo-icon {
-    width: 32px;
-    height: 32px;
-    border: 2px solid var(--accent);
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 0.75rem;
-    color: var(--accent);
-    position: relative;
-  }
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.75rem;
+      color: var(--accent);
+      position: relative;
+    }
 
-  .logo-icon::before {
-    content: '▲';
-    font-size: 14px;
-  }
+    .logo-icon::before {
+      content: '▲';
+      font-size: 14px;
+    }
 
-  h1 {
-    font-family: var(--font-mono);
-    font-size: 1.25rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    color: var(--text-primary);
-  }
+    h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
 
-  .subtitle {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
+    .subtitle {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
 
-  /* Form */
-  .form-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-  }
+    /* Form */
+    .form-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
 
-  .field-group {
-    margin-bottom: 1.25rem;
-  }
+    .field-group {
+      margin-bottom: 1.25rem;
+    }
 
-  .field-group:last-child {
-    margin-bottom: 0;
-  }
+    .field-group:last-child {
+      margin-bottom: 0;
+    }
 
-  label {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-  }
+    label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
 
-  input, select {
-    width: 100%;
-    padding: 0.625rem 0.75rem;
-    font-family: var(--font-mono);
-    font-size: 0.875rem;
-    color: var(--text-primary);
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
+    input,
+    select {
+      width: 100%;
+      padding: 0.625rem 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text-primary);
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
 
-  input:focus, select:focus {
-    border-color: var(--border-focus);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-  }
+    input:focus,
+    select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
 
-  input::placeholder {
-    color: var(--text-muted);
-  }
+    input::placeholder {
+      color: var(--text-muted);
+    }
 
-  select {
-    cursor: pointer;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%237a8ba0' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    padding-right: 2rem;
-  }
+    select {
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%237a8ba0' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      padding-right: 2rem;
+    }
 
-  .row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
 
-  .row-3 {
-    display: grid;
-    grid-template-columns: 1fr 1fr auto;
-    gap: 1rem;
-    align-items: end;
-  }
+    .row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 1rem;
+      align-items: end;
+    }
 
-  /* Button */
-  .btn-scan {
-    width: 100%;
-    padding: 0.75rem 1.5rem;
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--bg-primary);
-    background: var(--accent);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
-    position: relative;
-    overflow: hidden;
-  }
+    /* Button */
+    .btn-scan {
+      width: 100%;
+      padding: 0.75rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--bg-primary);
+      background: var(--accent);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
 
-  .btn-scan:hover:not(:disabled) {
-    background: var(--accent-dim);
-    box-shadow: 0 0 20px var(--accent-glow);
-  }
+    .btn-scan:hover:not(:disabled) {
+      background: var(--accent-dim);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
 
-  .btn-scan:active:not(:disabled) {
-    transform: scale(0.98);
-  }
+    .btn-scan:active:not(:disabled) {
+      transform: scale(0.98);
+    }
 
-  .btn-scan:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+    .btn-scan:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
 
-  .btn-scan .spinner {
-    display: none;
-    width: 14px;
-    height: 14px;
-    border: 2px solid transparent;
-    border-top-color: var(--bg-primary);
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-    margin-right: 0.5rem;
-  }
+    .btn-scan .spinner {
+      display: none;
+      width: 14px;
+      height: 14px;
+      border: 2px solid transparent;
+      border-top-color: var(--bg-primary);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 0.5rem;
+    }
 
-  .btn-scan.loading .spinner {
-    display: inline-block;
-  }
+    .btn-scan.loading .spinner {
+      display: inline-block;
+    }
 
-  .btn-scan.loading .btn-text {
-    opacity: 0.7;
-  }
+    .btn-scan.loading .btn-text {
+      opacity: 0.7;
+    }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
 
-  /* Results */
-  .results-area {
-    display: none;
-  }
+    /* Results */
+    .results-area {
+      display: none;
+    }
 
-  .results-area.visible {
-    display: block;
-    animation: slideUp 0.3s ease-out;
-  }
+    .results-area.visible {
+      display: block;
+      animation: slideUp 0.3s ease-out;
+    }
 
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
 
-  .result-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
 
-  .result-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.875rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-secondary);
-  }
+    .result-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
 
-  .result-label {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-  }
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-secondary);
+    }
 
-  .result-status {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.2rem 0.5rem;
-    border-radius: 3px;
-    letter-spacing: 0.04em;
-  }
+    .result-label {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
 
-  .result-status.success {
-    color: var(--accent);
-    background: var(--accent-glow);
-  }
+    .result-status {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+      letter-spacing: 0.04em;
+    }
 
-  .result-status.error {
-    color: var(--error);
-    background: var(--error-bg);
-  }
+    .result-status.success {
+      color: var(--accent);
+      background: var(--accent-glow);
+    }
 
-  .result-body {
-    padding: 1.25rem;
-  }
+    .result-status.error {
+      color: var(--error);
+      background: var(--error-bg);
+    }
 
-  .result-output {
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    line-height: 1.7;
-    color: var(--text-primary);
-    white-space: pre-wrap;
-    word-break: break-word;
-    tab-size: 2;
-  }
+    .result-body {
+      padding: 1.25rem;
+    }
 
-  /* Error card */
-  .error-card {
-    background: var(--bg-card);
-    border: 1px solid rgba(255, 77, 106, 0.2);
-    border-radius: 6px;
-    padding: 1.25rem;
-  }
+    .result-output {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.7;
+      color: var(--text-primary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      tab-size: 2;
+    }
 
-  .error-title {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--error);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-  }
+    /* Error card */
+    .error-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(255, 77, 106, 0.2);
+      border-radius: 6px;
+      padding: 1.25rem;
+    }
 
-  .error-message {
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
-  }
+    .error-title {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--error);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
 
-  /* Footer */
-  footer {
-    margin-top: 2rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    color: var(--text-muted);
-    letter-spacing: 0.04em;
-    text-align: center;
-  }
+    .error-message {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
 
-  /* Responsive */
-  @media (max-width: 480px) {
-    .container { padding: 1.25rem 1rem; }
-    .row, .row-3 { grid-template-columns: 1fr; }
-    h1 { font-size: 1.1rem; }
-  }
-</style>
+    /* Footer */
+    footer {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      text-align: center;
+    }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      .container {
+        padding: 1.25rem 1rem;
+      }
+
+      .row,
+      .row-3 {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 1.1rem;
+      }
+    }
+  </style>
 </head>
+
 <body>
-<div class="container">
-  <header>
-    <div class="logo">
-      <div class="logo-icon"></div>
-      <h1>Options Scanner</h1>
-    </div>
-    <div class="subtitle">Bedrock AgentCore &middot; Greeks &amp; Scoring</div>
-  </header>
-
-  <form id="scanForm" class="form-card" autocomplete="off">
-    <div class="field-group">
-      <label for="symbol">Symbol</label>
-      <input type="text" id="symbol" name="symbol" placeholder="AAPL" required
-             pattern="[A-Za-z]{1,5}" title="1-5 letter ticker symbol">
-    </div>
-
-    <div class="field-group">
-      <div class="row">
-        <div>
-          <label for="start_date">Start Date</label>
-          <input type="date" id="start_date" name="start_date" required>
-        </div>
-        <div>
-          <label for="end_date">End Date</label>
-          <input type="date" id="end_date" name="end_date" required>
-        </div>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-icon"></div>
+        <h1>Hedge Fund Desk</h1>
       </div>
+      <div class="subtitle">Bedrock AgentCore &middot; Risk &amp; Volatility Engine</div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="scanner">Smart Scanner</button>
+      <button class="tab-btn" data-tab="gatekeeper">Gatekeeper</button>
     </div>
 
-    <div class="field-group">
-      <div class="row-3">
-        <div>
-          <label for="top_n">Results</label>
-          <select id="top_n" name="top_n">
-            <option value="3">Top 3</option>
-            <option value="5" selected>Top 5</option>
-            <option value="10">Top 10</option>
+    <!-- SMART SCANNER TAB -->
+    <div id="scanner" class="tab-content active">
+      <div class="card-intro">
+        <p>Policy-based strategy selection. Filters for <strong>30-60 DTE</strong>, <strong>30-50 Delta</strong>, and
+          <strong>High Liquidity</strong>.</p>
+      </div>
+
+      <form id="scanForm" class="form-card" autocomplete="off">
+        <div class="field-group">
+          <label for="scan_symbol">Symbol</label>
+          <input type="text" id="scan_symbol" name="symbol" placeholder="AAPL" required pattern="[A-Za-z]{1,5}"
+            title="1-5 letter ticker symbol">
+        </div>
+
+        <div class="field-group">
+          <label for="strategy_pref">Strategy Bias (Optional)</label>
+          <select id="strategy_pref" name="strategy_preference">
+            <option value="">Auto (Based on Vol Regime)</option>
+            <option value="VERTICAL_SPREAD">Vertical Spread</option>
+            <option value="IRON_CONDOR">Iron Condor</option>
+            <option value="CALENDAR">Calendar Spread</option>
           </select>
         </div>
-        <div></div>
-        <div>
-          <button type="submit" class="btn-scan" id="submitBtn">
+
+        <div class="field-group">
+          <button type="submit" class="btn-scan" id="scanBtn">
             <span class="spinner"></span>
-            <span class="btn-text">Scan Options</span>
+            <span class="btn-text">Find Opportunities</span>
           </button>
         </div>
-      </div>
+      </form>
+
+      <div id="scanResults" class="results-area"></div>
     </div>
-  </form>
 
-  <div id="resultsArea" class="results-area"></div>
+    <!-- GATEKEEPER TAB -->
+    <div id="gatekeeper" class="tab-content">
+      <div class="card-intro">
+        <p>Scored validation. Checks <strong>Risk Limits</strong>, <strong>Events</strong>, and <strong>Greeks</strong>
+          before approval.</p>
+      </div>
 
-  <footer>Powered by AWS Bedrock AgentCore</footer>
-</div>
+      <form id="gateForm" class="form-card" autocomplete="off">
+        <div class="row">
+          <div>
+            <label for="gk_symbol">Symbol</label>
+            <input type="text" id="gk_symbol" placeholder="NVDA" required>
+          </div>
+          <div>
+            <label for="gk_strategy">Strategy</label>
+            <select id="gk_strategy">
+              <option value="BULL_CALL_DEBIT_SPREAD">Bull Call Spread</option>
+              <option value="BEAR_PUT_DEBIT_SPREAD">Bear Put Spread</option>
+              <option value="IRON_CONDOR">Iron Condor</option>
+              <option value="PUT_CREDIT_SPREAD">Put Credit Spread</option>
+            </select>
+          </div>
+        </div>
 
-<script>
-(function () {
-  const form = document.getElementById('scanForm');
-  const btn = document.getElementById('submitBtn');
-  const resultsArea = document.getElementById('resultsArea');
+        <div class="row">
+          <div>
+            <label for="gk_expiry">Expiration</label>
+            <input type="date" id="gk_expiry" required>
+          </div>
+          <div>
+            <label for="gk_loss">Max Loss ($)</label>
+            <input type="number" id="gk_loss" value="500" step="50">
+          </div>
+        </div>
 
-  // Set default dates: start = today, end = +30 days
-  const today = new Date();
-  const future = new Date(today);
-  future.setDate(future.getDate() + 30);
-  document.getElementById('start_date').value = fmt(today);
-  document.getElementById('end_date').value = fmt(future);
+        <div class="field-group" style="margin-top: 1rem;">
+          <button type="submit" class="btn-scan" id="checkBtn">
+            <span class="spinner"></span>
+            <span class="btn-text">Validate Trade</span>
+          </button>
+        </div>
+      </form>
 
-  function fmt(d) {
-    return d.toISOString().slice(0, 10);
-  }
+      <div id="gateResults" class="results-area"></div>
+    </div>
 
-  form.addEventListener('submit', async function (e) {
-    e.preventDefault();
+    <footer>Powered by AWS Bedrock AgentCore &middot; v2.0 (Hedge Fund Grade)</footer>
+  </div>
 
-    const symbol = document.getElementById('symbol').value.trim();
-    const startDate = document.getElementById('start_date').value;
-    const endDate = document.getElementById('end_date').value;
-    const topN = parseInt(document.getElementById('top_n').value, 10);
-
-    if (!symbol) return;
-
-    if (endDate < startDate) {
-      showError('Invalid date range', 'End date must be on or after start date.');
-      return;
+  <style>
+    /* Additions for Tabs */
+    .tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
     }
 
-    btn.classList.add('loading');
-    btn.disabled = true;
-    resultsArea.className = 'results-area';
-    resultsArea.innerHTML = '';
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.75rem 0;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+    }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000);
+    .tab-btn:hover {
+      color: var(--text-primary);
+    }
 
-    try {
-      const resp = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symbol: symbol,
-          start_date: startDate,
-          end_date: endDate,
-          top_n: topN,
-        }),
-        signal: controller.signal,
+    .tab-btn.active {
+      color: var(--accent);
+    }
+
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .card-intro {
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .card-intro strong {
+      color: var(--text-primary);
+    }
+
+    /* Score Badge */
+    .score-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: var(--bg-primary);
+      border: 3px solid var(--border);
+      color: var(--text-primary);
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .score-badge.pass {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    .score-badge.fail {
+      border-color: var(--error);
+      color: var(--error);
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .score-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      padding: 0.5rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 4px;
+    }
+  </style>
+
+  <script>
+    (function () {
+      // --- Tabs Logic ---
+      const tabs = document.querySelectorAll('.tab-btn');
+      const contents = document.querySelectorAll('.tab-content');
+
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => t.classList.remove('active'));
+          contents.forEach(c => c.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById(tab.dataset.tab).classList.add('active');
+        });
       });
 
-      clearTimeout(timeout);
-      const data = await resp.json();
+      // --- Dates ---
+      const today = new Date();
+      const future = new Date(today);
+      future.setDate(future.getDate() + 45); // Default to 45 DTE
+      document.getElementById('gk_expiry').value = future.toISOString().slice(0, 10);
 
-      if (!resp.ok || data.status === 'error') {
-        showError('Scan failed', data.output || data.detail || `HTTP ${resp.status}`);
-      } else {
-        showResult(symbol, data.output || JSON.stringify(data, null, 2));
+      // --- Helpers ---
+      function esc(s) {
+        if (typeof s !== 'string') return s;
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
       }
-    } catch (err) {
-      clearTimeout(timeout);
-      if (err.name === 'AbortError') {
-        showError('Timeout', 'Request timed out after 60 seconds.');
-      } else {
-        showError('Network error', err.message);
-      }
-    } finally {
-      btn.classList.remove('loading');
-      btn.disabled = false;
-    }
-  });
 
-  function showResult(symbol, output) {
-    resultsArea.innerHTML = `
-      <div class="result-card">
-        <div class="result-header">
-          <span class="result-label">${esc(symbol)} &mdash; Scan Results</span>
-          <span class="result-status success">OK</span>
-        </div>
-        <div class="result-body">
-          <div class="result-output">${esc(output)}</div>
-        </div>
-      </div>`;
-    resultsArea.className = 'results-area visible';
-  }
-
-  function showError(title, message) {
-    resultsArea.innerHTML = `
+      function renderError(el, title, msg) {
+        el.innerHTML = `
       <div class="error-card">
         <div class="error-title">${esc(title)}</div>
-        <div class="error-message">${esc(message)}</div>
+        <div class="error-message">${esc(msg)}</div>
       </div>`;
-    resultsArea.className = 'results-area visible';
-  }
+        el.className = 'results-area visible';
+      }
 
-  function esc(s) {
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-  }
-})();
-</script>
+      // --- Scanner Logic ---
+      const scanForm = document.getElementById('scanForm');
+      const scanBtn = document.getElementById('scanBtn');
+      const scanResults = document.getElementById('scanResults');
+
+      scanForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const symbol = document.getElementById('scan_symbol').value.trim();
+        const strat = document.getElementById('strategy_pref').value;
+
+        if (!symbol) return;
+
+        scanBtn.classList.add('loading');
+        scanBtn.disabled = true;
+        scanResults.innerHTML = '';
+
+        try {
+          const resp = await fetch('/api/smart-scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: symbol, strategy_preference: strat || null })
+          });
+          const data = await resp.json();
+
+          if (data.status === 'success') {
+            let html = `
+           <div class="result-card">
+             <div class="result-header">
+               <span class="result-label">SCAN RESULTS: ${esc(data.symbol)} ($${data.current_price})</span>
+               <span class="result-status success">${data.opportunities.length} Found</span>
+             </div>
+             <div class="result-body">`;
+
+            if (data.opportunities.length === 0) {
+              html += `<div class="result-output">No opportunities found matching strict criteria.</div>`;
+            } else {
+              data.opportunities.forEach(opp => {
+                html += `
+                <div style="margin-bottom: 1rem; border-left: 2px solid var(--accent); padding-left: 1rem;">
+                  <div style="color: var(--accent); font-weight: bold;">${esc(opp.strategy)}</div>
+                  <div style="color: var(--text-secondary); font-size: 0.8rem;">${esc(opp.description)}</div>
+                  <div class="score-grid">
+                     <div class="score-item"><span>Cost/Credit:</span> <span>$${opp.cost ? opp.cost.toFixed(2) : '-'}</span></div>
+                     <div class="score-item"><span>Max Profit:</span> <span>$${opp.max_profit ? opp.max_profit.toFixed(2) : '-'}</span></div>
+                  </div>
+                </div>`;
+              });
+            }
+            html += `</div></div>`;
+            scanResults.innerHTML = html;
+            scanResults.className = 'results-area visible';
+          } else {
+            renderError(scanResults, 'Error', data.output);
+          }
+        } catch (err) {
+          renderError(scanResults, 'Network Error', err.message);
+        } finally {
+          scanBtn.classList.remove('loading');
+          scanBtn.disabled = false;
+        }
+      });
+
+      // --- Gatekeeper Logic ---
+      const gateForm = document.getElementById('gateForm');
+      const checkBtn = document.getElementById('checkBtn');
+      const gateResults = document.getElementById('gateResults');
+
+      gateForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const symbol = document.getElementById('gk_symbol').value.trim();
+
+        checkBtn.classList.add('loading');
+        checkBtn.disabled = true;
+        gateResults.innerHTML = '';
+
+        try {
+          const resp = await fetch('/api/gatekeeper/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              symbol: symbol,
+              strategy_type: document.getElementById('gk_strategy').value,
+              expiration_date: document.getElementById('gk_expiry').value,
+              max_loss: parseFloat(document.getElementById('gk_loss').value) || 500,
+              quantity: 1
+            })
+          });
+          const data = await resp.json();
+
+          if (data.status === 'success') {
+            const scoreClass = data.approved ? 'pass' : 'fail';
+            let html = `
+            <div class="result-card">
+              <div class="result-header">
+                <span class="result-label">GATEKEEPER ANALYSIS</span>
+                <span class="result-status ${data.approved ? 'success' : 'error'}">${data.approved ? 'APPROVED' : 'REJECTED'}</span>
+              </div>
+              <div class="result-body" style="display: flex; gap: 1.5rem; align-items: flex-start;">
+                 <div class="score-badge ${scoreClass}">${data.total_score}</div>
+                 <div style="flex: 1;">
+                   ${data.rejection_reason ? `<div style="color: var(--error); margin-bottom: 0.5rem; font-size: 0.9rem;">⛔ ${esc(data.rejection_reason)}</div>` : ''}
+                   <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Score Breakdown:</div>
+                   <div class="score-grid">
+                     ${Object.entries(data.breakdown).map(([k, v]) =>
+              `<div class="score-item"><span>${k}:</span> <span style="font-weight: bold; color: ${v < 0 ? 'var(--error)' : 'var(--success)'};">${v > 0 ? '+' : ''}${v}</span></div>`
+            ).join('')}
+                   </div>
+                 </div>
+              </div>`;
+
+            if (data.warnings && data.warnings.length > 0) {
+              html += `<div style="padding: 0 1.25rem 1.25rem;">
+               <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Warnings:</div>
+               <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 1rem; margin-top: 0.25rem;">
+                 ${data.warnings.map(w => `<li>${esc(w)}</li>`).join('')}
+               </ul>
+             </div>`;
+            }
+
+            html += `</div>`;
+            gateResults.innerHTML = html;
+            gateResults.className = 'results-area visible';
+          } else {
+            renderError(gateResults, 'Error', data.output);
+          }
+        } catch (err) {
+          renderError(gateResults, 'Network Error', err.message);
+        } finally {
+          checkBtn.classList.remove('loading');
+          checkBtn.disabled = false;
+        }
+      });
+
+    })();
+  </script>
 </body>
+
 </html>

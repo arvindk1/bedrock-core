@@ -211,5 +211,240 @@ class OptionsScanner:
 
         return {"delta": delta}
 
-# Global Instance
+
+# ============================================================================
+# PHASE 2: generate_candidates (raw, no risk gating)
+# ============================================================================
+
+def generate_candidates(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+) -> List[Dict[str, Any]]:
+    """
+    Generate raw candidate spreads within expiration window (NO risk gating).
+
+    Used by orchestrator for Phase 2 workflow.
+
+    Args:
+        symbol: Stock ticker
+        start_date: Earliest expiration (YYYY-MM-DD)
+        end_date: Latest expiration (YYYY-MM-DD)
+
+    Returns:
+        List of candidate dicts with fields: symbol, strategy, expiration, legs, cost, max_profit, dte
+    """
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        if start > end:
+            logger.error(f"Invalid date range: {start_date} > {end_date}")
+            return []
+
+        # Get current price
+        ticker = yf.Ticker(symbol)
+        current_data = ticker.history(period="1d")
+        if current_data.empty:
+            logger.error(f"No price data for {symbol}")
+            return []
+
+        current_price = float(current_data["Close"].iloc[-1])
+
+        # Get expirations in window
+        expirations = ticker.options or []
+        valid_expirations = []
+        for exp in expirations:
+            try:
+                exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+                if start <= exp_date <= end:
+                    valid_expirations.append(exp)
+            except ValueError:
+                continue
+
+        if not valid_expirations:
+            logger.warning(f"No expirations for {symbol} between {start_date} and {end_date}")
+            return []
+
+        # Scan each expiration
+        opportunities = []
+        scanner = OptionsScanner()
+
+        for expiry in valid_expirations:
+            try:
+                chain = scanner.market_data.get_option_chain(symbol, expiry)
+                if chain is None:
+                    continue
+
+                dte = (datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()).days
+                spreads = scanner._find_vertical_spreads(symbol, current_price, chain, expiry, "DEBIT_SPREAD")
+
+                for spread in spreads:
+                    # Add computed fields for gating
+                    spread["cost"] = spread.get("cost", 0)
+                    spread["max_loss"] = spread["cost"]  # Debit spread max loss is cost
+                    spread["strategy_type"] = spread.get("strategy", "UNKNOWN")
+                    spread["dte"] = dte
+
+                opportunities.extend(spreads)
+
+            except Exception as e:
+                logger.warning(f"Error scanning {symbol} {expiry}: {e}")
+                continue
+
+        logger.info(f"Generated {len(opportunities)} candidates for {symbol}")
+        return opportunities
+
+    except Exception as e:
+        logger.error(f"generate_candidates failed for {symbol}: {e}")
+        return []
+
+
+# ============================================================================
+# PHASE 1: find_cheapest_options (simple wrapper with risk gating)
+# ============================================================================
+
+def find_cheapest_options(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    top_n: int = 5,
+    portfolio: Optional[List[Dict[str, Any]]] = None,
+    market_context: Optional[Dict[str, Any]] = None,
+) -> str:
+    """
+    Find and rank the best liquid options contracts within expiration window.
+
+    Integrates risk gating: rejects trades that breach risk limits.
+
+    Args:
+        symbol: Stock ticker
+        start_date: Earliest expiration (YYYY-MM-DD)
+        end_date: Latest expiration (YYYY-MM-DD)
+        top_n: Number of top results to return
+        portfolio: Current portfolio positions for risk checks
+        market_context: Market state (daily_pnl, portfolio_value, etc.)
+
+    Returns:
+        Formatted string with ranked contracts and risk summary
+    """
+    from risk_engine import RiskEngine
+
+    try:
+        # Initialize engines
+        scanner = OptionsScanner()
+        risk_engine = RiskEngine()
+
+        # Parse expiration window
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        if start > end:
+            return f"Error: start_date {start_date} is after end_date {end_date}"
+
+        # Get current price for context
+        ticker = yf.Ticker(symbol)
+        current_data = ticker.history(period="1d")
+        if current_data.empty:
+            return f"Error: No price data found for {symbol}"
+
+        current_price = float(current_data["Close"].iloc[-1])
+
+        # Scan for opportunities (use default strategy for now)
+        opportunities = []
+
+        # Get expiration dates within window
+        expirations = ticker.options
+        valid_expirations = []
+        for exp in expirations:
+            exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+            if start <= exp_date <= end:
+                valid_expirations.append(exp)
+
+        if not valid_expirations:
+            return f"No expirations found for {symbol} between {start_date} and {end_date}"
+
+        # Scan each expiration
+        for expiry in valid_expirations:
+            chain = scanner.market_data.get_option_chain(symbol, expiry)
+            if chain is None:
+                continue
+
+            dte = (datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()).days
+            spreads = scanner._find_vertical_spreads(symbol, current_price, chain, expiry, "DEBIT_SPREAD")
+
+            for spread in spreads:
+                # ✅ RISK GATE: Check if trade fits risk profile
+                trade_candidate = {
+                    "symbol": symbol,
+                    "max_loss": spread["cost"],  # Debit spread max loss is the cost
+                    "strategy_type": spread["strategy"],
+                    "sector": symbol,  # Will be resolved by RiskEngine
+                    "dte": dte,
+                    "strike_long": spread["legs"][0]["strike"],
+                    "strike_short": spread["legs"][1]["strike"],
+                }
+
+                rejected, reason = risk_engine.should_reject_trade(
+                    trade_candidate,
+                    portfolio or [],
+                    market_context
+                )
+
+                if rejected:
+                    logger.debug(f"Trade rejected: {symbol} {spread['strategy']} @ {spread['legs'][0]['strike']} - {reason}")
+                    spread["_rejected"] = reason
+                else:
+                    spread["_risk_pass"] = True
+
+                opportunities.append(spread)
+
+        # Filter to only accepted trades
+        accepted = [op for op in opportunities if op.get("_risk_pass")]
+        rejected = [op for op in opportunities if "_rejected" in op]
+
+        if not accepted:
+            msg = f"No opportunities passed risk checks for {symbol}\n"
+            if rejected:
+                msg += f"\n{len(rejected)} contracts rejected for risk:\n"
+                for r in rejected[:3]:
+                    msg += f"  - {r['strategy']} @ {r['legs'][0]['strike']}: {r['_rejected']}\n"
+            return msg
+
+        # Sort by profit/cost ratio
+        accepted = sorted(
+            accepted,
+            key=lambda x: (x["max_profit"] / x["cost"] if x["cost"] > 0 else 0),
+            reverse=True
+        )
+
+        # Format output
+        output = f"\n{'='*80}\n"
+        output += f"TOP {min(top_n, len(accepted))} OPPORTUNITIES FOR {symbol}\n"
+        output += f"Current Price: ${current_price:.2f} | Risk Engine: ACTIVE\n"
+        output += f"Passed Risk Checks: {len(accepted)} | Rejected: {len(rejected)}\n"
+        output += f"{'='*80}\n\n"
+
+        for i, opp in enumerate(accepted[:top_n], 1):
+            output += f"{i}. {opp['strategy']} (Exp: {opp['expiration']})\n"
+            output += f"   Long:  ${opp['legs'][0]['strike']:.2f} Call | Delta: {opp['legs'][0]['delta']:.2f}\n"
+            output += f"   Short: ${opp['legs'][1]['strike']:.2f} Call | Delta: {opp['legs'][1]['delta']:.2f}\n"
+            output += f"   Cost: ${opp['cost']:.2f} | Max Profit: ${opp['max_profit']:.2f} | R/R: {opp['max_profit']/opp['cost']:.2f}x\n"
+            output += f"   {opp['description']}\n\n"
+
+        if rejected:
+            output += f"\n📋 REJECTED ({len(rejected)} total):\n"
+            for r in rejected[:5]:
+                output += f"  ❌ {r['strategy']} @ {r['legs'][0]['strike']}: {r['_rejected']}\n"
+
+        output += f"\n⚠️  Disclaimer: Informational only, not financial advice.\n"
+        return output
+
+    except ValueError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        return f"Error scanning options for {symbol}: {type(e).__name__}: {e}"
+
+
+# Global Instance (for backward compatibility if needed)
 options_scanner = OptionsScanner()

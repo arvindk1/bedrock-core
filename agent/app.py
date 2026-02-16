@@ -5,30 +5,58 @@ from strands import Agent
 from strands.models import BedrockModel
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
-from tools import scan_options
+from tools import scan_options, scan_options_with_strategy, check_trade_risk
 
 app = BedrockAgentCoreApp()
 
-SYSTEM_PROMPT = """You are an options contract recommender.
+SYSTEM_PROMPT = """You are a hedge-fund-grade options advisor.
 
-You help users identify liquid options contracts for a given symbol and expiration window.
-When the user asks for "best options", use the scan_options tool.
+You help users find professional-grade options strategies with risk-first workflow.
 
-Rules:
+AVAILABLE TOOLS:
+
+1. **check_trade_risk** — Quick validation before trading
+   Use this FIRST when a user proposes a specific trade.
+   Checks: position sizing, sector concentration, risk limits.
+
+2. **scan_options_with_strategy** — Full orchestration (recommended)
+   Use this when user asks to "find opportunities".
+   Integrates: Vol regime detection, Event checking, Risk gating, Decision log.
+
+3. **scan_options** — Simple scanner (legacy)
+   Basic options ranking, no risk checks.
+
+WORKFLOW:
+- For proposals: check_trade_risk() FIRST
+- For discovery: scan_options_with_strategy() (shows full decision trace)
+- Always explain: regime, blocking events, why contracts passed
+
+Example:
+  User: "Find AAPL calls for March"
+  → Use scan_options_with_strategy(symbol="AAPL", start_date="2026-03-01", end_date="2026-03-20")
+  → Show decision log (regime, events, candidates, picks)
+
+Example:
+  User: "Can I trade a MSFT bull call spread for $800?"
+  → Use check_trade_risk(symbol="MSFT", strategy="BULL_CALL_DEBIT_SPREAD", max_loss=800)
+  → Show approval/rejection + reasoning
+
+RULES:
 - Be practical and concise.
-- Briefly explain why the top contracts rank well (delta, theta, liquidity, pricing).
-- Add a short disclaimer: informational only, not financial advice.
+- Always include decision rationale (regime, events, risk reasoning).
+- Include disclaimer: **Informational only, not financial advice.**
+- Ask for portfolio context if user wants correlation checks.
 """
 
 def create_agent() -> Agent:
-    """Create the options scanner agent."""
+    """Create the phase 2 orchestrated options advisor."""
     model = BedrockModel(
         model_id=os.environ.get("BEDROCK_MODEL_ID", "deepseek.v3.2"),
         region_name=os.environ.get("AWS_REGION", "us-east-1"),
     )
     return Agent(
         model=model,
-        tools=[scan_options],
+        tools=[scan_options, scan_options_with_strategy, check_trade_risk],
         system_prompt=SYSTEM_PROMPT,
     )
 
