@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
 from event_loader import EventLoader
+from reason_codes import is_structured_reason, parse_reason_code
 
 
 # ---------------------------------------------------------------------------
@@ -186,3 +187,78 @@ class TestBlockingEvents:
 
         earnings_events = [e for e in events if e.get("type") == "earnings"]
         assert len(earnings_events) >= 1
+
+
+# ---------------------------------------------------------------------------
+# TestStructuredReasonCodes
+# ---------------------------------------------------------------------------
+class TestStructuredReasonCodes:
+    """Tests for structured reason codes in events."""
+
+    @patch("event_loader.yf.Ticker")
+    def test_earnings_generates_reason_code(self, mock_ticker_cls):
+        """Earnings check should include structured EVENT_BLOCK reason code."""
+        mock_ticker = MagicMock()
+        mock_ticker_cls.return_value = mock_ticker
+
+        future_date = datetime.now() + timedelta(days=10)
+        earnings_df = pd.DataFrame(
+            {"Earnings Date": [future_date]},
+            index=pd.DatetimeIndex([future_date]),
+        )
+        type(mock_ticker).earnings_dates = PropertyMock(return_value=earnings_df)
+
+        loader = EventLoader()
+        result = loader.check_earnings_before_expiry("AAPL", 45)
+
+        assert result is not None
+        assert "reason_code" in result
+        assert is_structured_reason(result["reason_code"])
+        parsed = parse_reason_code(result["reason_code"])
+        assert parsed["rule"] == "EARNINGS"
+        assert parsed["context"]["symbol"] == "AAPL"
+        assert "days_until" in parsed["context"]
+
+    @patch("event_loader.yf.Ticker")
+    def test_blocking_events_include_reason_codes(self, mock_ticker_cls):
+        """Macro events should include structured reason codes."""
+        mock_ticker = MagicMock()
+        mock_ticker_cls.return_value = mock_ticker
+        type(mock_ticker).earnings_dates = PropertyMock(return_value=None)
+
+        loader = EventLoader()
+        # Get events for the next 60 days - should include some macro events
+        events = loader.get_blocking_events("SPY", 60)
+
+        # Verify each event has a reason_code
+        for event in events:
+            assert "reason_code" in event, f"Event {event} missing reason_code"
+            assert is_structured_reason(event["reason_code"])
+            parsed = parse_reason_code(event["reason_code"])
+            assert "days_until" in parsed["context"]
+
+    @patch("event_loader.yf.Ticker")
+    def test_macro_reason_codes_have_correct_rule(self, mock_ticker_cls):
+        """Macro events should have correct rule type in reason code."""
+        mock_ticker = MagicMock()
+        mock_ticker_cls.return_value = mock_ticker
+        type(mock_ticker).earnings_dates = PropertyMock(return_value=None)
+
+        loader = EventLoader()
+        events = loader.get_blocking_events("SPY", 180)  # 6 months
+
+        macro_events = [e for e in events if e.get("type") == "macro"]
+        assert len(macro_events) > 0, "Should have macro events in 180-day window"
+
+        # Verify rules match event types
+        for event in macro_events:
+            parsed = parse_reason_code(event["reason_code"])
+            rule = parsed["rule"]
+            name = event["name"]
+
+            if "FOMC" in name:
+                assert rule == "FOMC"
+            elif "CPI" in name:
+                assert rule == "CPI"
+            elif "Jobs" in name:
+                assert rule == "JOBS_REPORT"

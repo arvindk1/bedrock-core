@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Tuple
 
 import yfinance as yf
 
+from reason_codes import Rules, format_reason_code, GATE_EVENT
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -147,18 +149,30 @@ class EventLoader:
         The dict contains:
           - earnings_days: int
           - affects_trade: True
-          - warning: str
+          - type: "earnings"
+          - warning: str (free-text for UX)
+          - reason_code: str (structured code for machine parsing)
         """
         days = self._get_days_until_earnings(symbol)
         if days is None:
             return None
 
         if 0 <= days <= days_to_expiry:
+            reason_code = format_reason_code(
+                gate=GATE_EVENT,
+                rule=Rules.Event.EARNINGS,
+                context={
+                    "symbol": symbol,
+                    "days_until": days,
+                    "dte": days_to_expiry,
+                },
+            )
             return {
                 "earnings_days": days,
                 "affects_trade": True,
                 "type": "earnings",
                 "warning": "Earnings event occurs before expiration.",
+                "reason_code": reason_code,
             }
         return None
 
@@ -195,6 +209,14 @@ class EventLoader:
         """
         Aggregate earnings and macro events that fall within the trade
         window defined by *days_to_expiry*.
+
+        Each event includes:
+          - type: "earnings" or "macro"
+          - name: event name
+          - date: event date (ISO format)
+          - impact: severity level
+          - days_until: days until event
+          - reason_code: structured EVENT_BLOCK code
         """
         events: List[Dict] = []
 
@@ -208,11 +230,36 @@ class EventLoader:
         expiry = today + timedelta(days=days_to_expiry)
         for evt in self.macro_events:
             if today <= evt["date"] <= expiry:
+                days_until = (evt["date"] - today).days
+
+                # Map event name to reason code rule
+                if "FOMC" in evt["name"]:
+                    rule = Rules.Event.FOMC
+                elif "CPI" in evt["name"]:
+                    rule = Rules.Event.CPI
+                elif "Jobs" in evt["name"]:
+                    rule = Rules.Event.JOBS_REPORT
+                else:
+                    rule = Rules.Event.FOMC  # fallback
+
+                reason_code = format_reason_code(
+                    gate=GATE_EVENT,
+                    rule=rule,
+                    context={
+                        "symbol": symbol,
+                        "name": evt["name"],
+                        "days_until": days_until,
+                        "dte": days_to_expiry,
+                    },
+                )
+
                 events.append({
                     "type": "macro",
                     "name": evt["name"],
                     "date": evt["date"].isoformat(),
                     "impact": evt["impact"],
+                    "days_until": days_until,
+                    "reason_code": reason_code,
                 })
 
         return events
