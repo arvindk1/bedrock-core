@@ -146,8 +146,8 @@ def check_trade_risk(
         trade = {
             "symbol": symbol,
             "strategy_type": strategy,
-            "max_loss": max_loss,
-            "sector": symbol,  # Will be resolved by RiskEngine via SECTOR_MAP
+            "max_loss": max_loss,  # In dollars (option premium × 100 shares/contract × quantity)
+            # Note: RiskEngine resolves sector via SECTOR_MAP[symbol]; don't pass sector
         }
 
         rejected, reason = engine.should_reject_trade(trade, portfolio, {})

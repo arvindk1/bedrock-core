@@ -38,9 +38,14 @@ class OptionsScanner:
         self.vol_engine = VolEngine()
         self.market_data = MarketData()
 
-    async def scan_opportunities(self, symbol: str, strategy_preference: Optional[str] = None) -> List[Dict]:
+    def scan_opportunities(self, symbol: str, strategy_preference: Optional[str] = None) -> List[Dict]:
         """
         Scan for option opportunities based on market regime.
+
+        Uses VolEngine.detect_regime() (short vs long vol + IV rank) to route strategies:
+        - LOW: debit spreads (buy cheap premium)
+        - HIGH: credit spreads (sell expensive premium)
+        - MEDIUM: neutral spreads
 
         Args:
             symbol: Stock ticker
@@ -49,31 +54,28 @@ class OptionsScanner:
         Returns:
             List of trade dictionaries
         """
-        # 1. Determine Regime
+        # 1. Determine Regime using Phase-2 detector (short vs long vol + IV rank)
+        from vol_engine import VolRegime
+
+        regime = self.vol_engine.detect_regime(symbol)
         vol_result = self.vol_engine.calculate_volatility(symbol, model=VolatilityModel.HYBRID)
-        iv_rank = self.market_data.get_iv_rank(symbol) # approximation or from vol engine
 
         current_price = self.market_data.get_current_price(symbol)
         if not current_price:
             logger.error(f"Could not get price for {symbol}")
             return []
 
-        # Simple Regime Logic
-        # Low Vol (IV < 30% or Rank < 30) -> Debit Strategies (Long Vega)
-        # High Vol (IV > 50% or Rank > 50) -> Credit Strategies (Short Vega)
-        is_high_vol = vol_result.annual_volatility > 0.40
-        is_low_vol = vol_result.annual_volatility < 0.25
-
+        # Route strategy based on detected regime
         strategy_to_scan = strategy_preference
         if not strategy_to_scan:
-            if is_high_vol:
-                strategy_to_scan = "CREDIT_SPREAD" # or IRON_CONDOR if neutral
-            elif is_low_vol:
-                strategy_to_scan = "DEBIT_SPREAD" # or CALENDAR
+            if regime == VolRegime.HIGH:
+                strategy_to_scan = "CREDIT_SPREAD"  # Sell expensive premium
+            elif regime == VolRegime.LOW:
+                strategy_to_scan = "DEBIT_SPREAD"   # Buy cheap premium
             else:
-                strategy_to_scan = "VERTICAL_SPREAD" # Default
+                strategy_to_scan = "VERTICAL_SPREAD"  # Neutral
 
-        logger.info(f"🔎 Scanning {symbol}: Vol={vol_result.annual_volatility:.1%}, Strategy={strategy_to_scan}")
+        logger.info(f"🔎 Scanning {symbol}: Regime={regime.value}, Vol={vol_result.annual_volatility:.1%}, Strategy={strategy_to_scan}")
 
         # 2. Fetch Chains
         expiry = self._find_optimal_expiration(symbol)
@@ -85,12 +87,16 @@ class OptionsScanner:
             return []
 
         # 3. Find Candidates
+        # NOTE: Phase 2 MVP = Call Spreads Only (Debit & Credit)
+        # TODO: Add put credit spreads, iron condors in Phase 2.5
         candidates = []
 
         if "SPREAD" in strategy_to_scan:
+            # Phase-2: Generates call spreads (vertical spreads)
+            # TODO: Route strategy_to_scan to appropriate generator (call vs put)
             candidates = self._find_vertical_spreads(symbol, current_price, chain, expiry, strategy_to_scan)
         elif "CONDOR" in strategy_to_scan:
-            # Placeholder for Condor logic
+            # Placeholder for Condor logic (Phase 2.5+)
             pass
 
         return candidates

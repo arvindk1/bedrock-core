@@ -282,8 +282,8 @@ def full_scan_with_orchestration(
             trade_proposal = {
                 "symbol": candidate.get("symbol", symbol),
                 "strategy_type": candidate.get("strategy", "UNKNOWN"),
-                "max_loss": candidate.get("cost", 0),
-                "sector": symbol,
+                "max_loss": candidate.get("max_loss", 0),  # Already × 100 (dollars)
+                # Note: Don't pass sector—RiskEngine resolves via SECTOR_MAP[symbol]
             }
 
             rejected, reason = risk_engine.should_reject_trade(
