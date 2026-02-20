@@ -452,7 +452,8 @@ function renderTradeCards(picks) {
     if (!container) return;
 
     if (!picks || picks.length === 0) {
-        container.innerHTML = '<p style="color:var(--color-text-muted); padding:40px; text-align:center; font-family:var(--font-mono); font-size:0.85rem;">No picks found for this scan</p>';
+        const noTradesExpl = (appState.lastScanResult || {}).noTradesExplanation || null;
+        container.innerHTML = renderNoTradesCard(noTradesExpl);
         return;
     }
 
@@ -616,6 +617,82 @@ function renderPipelineJourney(pipeline, strategyReasoning) {
         : '';
 
     return `${stagesHtml}${reasoningHtml}`;
+}
+
+// ============================================================================
+// ZERO TRADES CARD
+// ============================================================================
+
+function renderNoTradesCard(explanation) {
+    if (!explanation) {
+        return `<div style="color:var(--color-text-muted); padding:40px; text-align:center; font-family:var(--font-mono); font-size:0.85rem;">No picks found for this scan</div>`;
+    }
+
+    const { summary, top_blockers = [], gate_counts = {}, next_actions = [] } = explanation;
+
+    const blockerSeverityColor = {
+        event: 'var(--accent-red)',
+        risk: 'var(--accent-red)',
+        gatekeeper: 'var(--accent-amber)',
+        correlation: 'var(--accent-amber)',
+        generated: 'var(--color-text-muted)',
+    };
+
+    const blockersHtml = top_blockers.map(b => `
+        <div style="padding:10px 14px; margin-bottom:6px; border-left:3px solid ${blockerSeverityColor[b.gate] || 'var(--accent-red)'}; background:rgba(239,68,68,0.06); border-radius:0 4px 4px 0;">
+            <div style="font-family:var(--font-mono); font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:${blockerSeverityColor[b.gate] || 'var(--accent-red)'}; margin-bottom:3px;">
+                ${(b.gate || '').toUpperCase()} GATE — ${(b.code || '').replace(/_/g, ' ')}
+            </div>
+            <div style="font-family:var(--font-mono); font-size:0.8rem; color:var(--color-text-secondary);">${b.display || '—'}</div>
+        </div>`).join('');
+
+    const gc = gate_counts;
+    const funnelSteps = [
+        { label: 'Generated', value: gc.generated },
+        { label: 'Event', value: gc.after_event },
+        { label: 'Risk', value: gc.after_risk },
+        { label: 'Gate', value: gc.after_gatekeeper },
+        { label: 'Corr', value: gc.after_correlation },
+        { label: 'Final', value: gc.final },
+    ];
+    const funnelHtml = funnelSteps.map((step, i) => {
+        const isZero = step.value === 0;
+        const color = isZero ? 'var(--accent-red)' : 'var(--color-text-muted)';
+        const sep = i < funnelSteps.length - 1 ? '<span style="color:var(--color-text-dim); margin:0 4px;">→</span>' : '';
+        return `<span style="font-family:var(--font-mono); font-size:0.7rem; color:${color}; font-weight:${isZero ? 700 : 400};">${step.value ?? '—'}<span style="font-size:0.55rem; color:var(--color-text-dim); display:block;">${step.label}</span></span>${sep}`;
+    }).join('');
+
+    const actionsHtml = next_actions.length > 0
+        ? next_actions.map(a => `
+            <div style="display:flex; align-items:flex-start; gap:8px; padding:5px 0; font-family:var(--font-mono); font-size:0.75rem; color:var(--color-text-secondary);">
+                <span style="color:var(--accent-indigo); flex-shrink:0;">→</span>
+                <span>${a}</span>
+            </div>`).join('')
+        : '';
+
+    return `
+    <div style="border:1px solid rgba(239,68,68,0.2); border-radius:8px; padding:20px; background:rgba(239,68,68,0.03);">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+            <svg style="width:18px;height:18px;stroke:var(--accent-red);fill:none;stroke-width:2;flex-shrink:0;" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+            <span style="font-family:var(--font-mono); font-weight:700; font-size:0.85rem; color:var(--color-text-primary);">No Trades Selected</span>
+        </div>
+        <p style="font-family:var(--font-mono); font-size:0.72rem; color:var(--color-text-muted); margin:0 0 14px;">${summary || '0 picks returned'}</p>
+
+        ${blockersHtml}
+
+        <div style="margin:14px 0; display:flex; align-items:center; gap:2px; flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--color-text-dim); margin-right:6px; font-weight:700;">Funnel</span>
+            ${funnelHtml}
+        </div>
+
+        ${actionsHtml ? `
+        <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--color-border-subtle);">
+            <span style="font-family:var(--font-mono); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--color-text-dim); font-weight:700; display:block; margin-bottom:6px;">Suggested Actions</span>
+            ${actionsHtml}
+        </div>` : ''}
+    </div>`;
 }
 
 // ============================================================================
