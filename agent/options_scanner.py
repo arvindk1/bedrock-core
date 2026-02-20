@@ -25,8 +25,10 @@ MIN_DTE = 30
 MAX_DTE = 60  # Sweet spot for theta/gamma balance
 TARGET_DELTA_MIN = 0.25
 TARGET_DELTA_MAX = 0.55
-MIN_LIQUIDITY_OI = 500
-MIN_LIQUIDITY_VOL = 100
+# Loosened liquidity constraints for testing/demo purposes 
+# (In production, these would be externalized to config and set higher)
+MIN_LIQUIDITY_OI = 10
+MIN_LIQUIDITY_VOL = 10
 
 class OptionsScanner:
     """
