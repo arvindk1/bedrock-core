@@ -508,7 +508,7 @@ class DecisionLog:
             "strategy_hint": self.strategy_hint,
             "event_policy": self.event_policy,
             "total_generated": len(self.candidates_raw),
-            "after_event_filter": len(self.candidates_raw) if not self.blocking_events else 0,
+            "after_event_filter": 0 if self.event_policy == "TIGHT" else len(self.candidates_raw),
             "after_risk_gate": len(self.candidates_after_risk_gate),
             "after_gatekeeper": len([c for c in self.candidates_after_risk_gate if any(
                 rc["candidate"].get("symbol") == c.get("symbol") and
@@ -679,17 +679,12 @@ def full_scan_with_orchestration(
         event_policy = _evaluate_event_policy(log.blocking_events)
         log.event_policy = event_policy
 
-        # TIGHT (±1 day): no new trades
-        if event_policy == "TIGHT":
-            logger.warning(f"Event in TIGHT window for {symbol}—no trades allowed")
-            log.candidates_raw = []
-            log.final_picks = []
-            return log
-
         # WARN (1–14 days): apply haircuts, stricter rules
         if event_policy == "WARN":
             logger.info(f"Event in WARN window for {symbol}—applying haircuts")
             # Haircuts will be applied in risk gate + gatekeeper (see below)
+
+        max_risk = policy_to_limit(policy_mode)
 
         # ====================================================================
         # BASE: Generate raw candidates (no gating)
@@ -701,6 +696,7 @@ def full_scan_with_orchestration(
 
         if not candidates:
             logger.info(f"No candidates generated for {symbol}")
+            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
             return log
 
         # ====================================================================
@@ -721,7 +717,14 @@ def full_scan_with_orchestration(
             except Exception:
                 pass
 
-        max_risk = policy_to_limit(policy_mode)
+        # TIGHT (±1 day): no new trades
+        if event_policy == "TIGHT":
+            logger.warning(f"Event in TIGHT window for {symbol}—no trades allowed")
+            log.candidates_raw = []
+            log.final_picks = []
+            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
+            return log
+
         risk_engine = RiskEngine(max_risk_per_trade=max_risk)
 
         accepted_after_risk = []
@@ -754,6 +757,7 @@ def full_scan_with_orchestration(
         if not accepted_after_risk:
             logger.info(f"No candidates passed risk gate for {symbol}")
             log.final_picks = []
+            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
             return log
 
         # ====================================================================
@@ -797,6 +801,7 @@ def full_scan_with_orchestration(
         if not scored_candidates:
             logger.info(f"No candidates passed gatekeeper for {symbol}")
             log.final_picks = []
+            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
             return log
 
         # ====================================================================
@@ -815,6 +820,7 @@ def full_scan_with_orchestration(
         if not after_correlation:
             logger.info(f"No candidates passed correlation gate for {symbol}")
             log.final_picks = []
+            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
             return log
 
         # ====================================================================
