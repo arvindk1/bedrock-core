@@ -60,4 +60,4 @@ class TestStaticFiles:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert "Options Scanner" in resp.text
+        assert "Option Scanner" in resp.text
