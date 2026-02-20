@@ -8,6 +8,8 @@ from typing import Optional, List, Dict, Any
 import boto3
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 # --- Local Backend Integration ---
@@ -26,9 +28,63 @@ logger = logging.getLogger("UIServer")
 
 app = FastAPI(title="Hedge Fund Options Desk")
 
+# Add CORS middleware to allow frontend requests from different port
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 RUNTIME_ARN = os.environ.get("AGENTCORE_RUNTIME_ARN", "")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 UI_DIR = os.path.dirname(__file__)
+
+# Mount static files directory for CSS, JS, etc.
+app.mount("/static", StaticFiles(directory=UI_DIR), name="static")
+
+
+# --- Scan Response Enrichment Helpers ---
+
+def _severity_for_rule(rule: str) -> str:
+    """Map a rejection rule code to a UI severity level."""
+    critical_rules = {"SECTOR_CAP", "MAX_LOSS_EXCEEDED", "DRAWDOWN_HALT", "EARNINGS", "FOMC", "CPI", "JOBS_REPORT", "EVENT_TIGHT"}
+    warning_rules = {"LIQUIDITY", "SPREAD_TOO_WIDE", "CORRELATION_BREACH", "IV_PENALTY"}
+    info_rules = {"LOW_SCORE", "NO_MAX_LOSS"}
+    if rule in critical_rules:
+        return "critical"
+    if rule in warning_rules:
+        return "warning"
+    if rule in info_rules:
+        return "info"
+    return "info"  # safe default
+
+
+def _enrich_rejections(rejections: list) -> list:
+    """
+    Add display_reason and severity to each rejection dict.
+    Works for any rejection list (risk, gatekeeper, correlation).
+    """
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), "..", "agent"))
+    from reason_codes import extract_reason_summary, parse_reason_code, is_structured_reason
+
+    enriched = []
+    for rej in rejections:
+        r = dict(rej)
+        reason = r.get("reason", "")
+        if is_structured_reason(reason):
+            r["display_reason"] = extract_reason_summary(reason)
+            parsed = parse_reason_code(reason)
+            rule = parsed.get("rule", "UNKNOWN")
+            r["severity"] = _severity_for_rule(rule)
+        else:
+            r["display_reason"] = reason or "Unknown"
+            r["severity"] = "info"
+        enriched.append(r)
+    return enriched
+
 
 
 # --- Data Models ---
@@ -75,6 +131,14 @@ class ScanRequest(BaseModel):
 @app.get("/")
 async def index():
     return FileResponse(os.path.join(UI_DIR, "index.html"))
+
+@app.get("/terminal.css")
+async def serve_css():
+    return FileResponse(os.path.join(UI_DIR, "terminal.css"), media_type="text/css")
+
+@app.get("/app.js")
+async def serve_js():
+    return FileResponse(os.path.join(UI_DIR, "app.js"), media_type="application/javascript")
 
 @app.post("/api/smart-scan")
 async def smart_scan(req: ScanRequest):
@@ -139,7 +203,16 @@ def scan(req: ScanRequest):
         policy_amounts = {'tight': 1000, 'moderate': 2000, 'aggressive': 5000}
         policy_amount = policy_amounts.get(req.policy_mode, 1000)
 
-        # Return formatted response for dashboard
+        # Enrich rejections with display_reason + severity
+        risk_rejs_enriched = _enrich_rejections(log_dict.get("risk_rejections", []))
+        gk_rejs_enriched = _enrich_rejections(log_dict.get("gatekeeper_rejections", []))
+        corr_rejs_enriched = _enrich_rejections(log_dict.get("correlation_rejections", []))
+
+        # No-trades explanation (from orchestrator — populated when picks = 0)
+        no_trades_explanation = None
+        if hasattr(decision_log, 'no_trades_explanation') and decision_log.no_trades_explanation:
+            no_trades_explanation = decision_log.no_trades_explanation
+
         return {
             "regime": log_dict.get("regime", "HIGH"),
             "spyTrend": log_dict.get("spy_trend", "Uptrend"),
@@ -148,6 +221,7 @@ def scan(req: ScanRequest):
             "blockingEvents": log_dict.get("blocking_events", []),
             "gateFunnel": {
                 "generated": log_dict.get("total_generated", 0),
+                "afterEvent": log_dict.get("after_event_filter", 0),
                 "afterRisk": log_dict.get("after_risk_gate", 0),
                 "afterGatekeeper": log_dict.get("after_gatekeeper", 0),
                 "afterCorrelation": log_dict.get("after_correlation", 0),
@@ -155,9 +229,17 @@ def scan(req: ScanRequest):
             },
             "picks": log_dict.get("final_picks", []),
             "rejections": {
-                "risk": log_dict.get("risk_rejections", []),
-                "gatekeeper": log_dict.get("gatekeeper_rejections", []),
-                "correlation": log_dict.get("correlation_rejections", []),
+                "risk": risk_rejs_enriched,
+                "gatekeeper": gk_rejs_enriched,
+                "event": [],
+                "correlation": corr_rejs_enriched,
+            },
+            "noTradesExplanation": no_trades_explanation,
+            "volatilityContext": {
+                "annual_vol": log_dict.get("regime_details", {}).get("annual_vol"),
+                "daily_vol": log_dict.get("regime_details", {}).get("daily_vol"),
+                "iv_rank": log_dict.get("regime_details", {}).get("iv_rank"),
+                "expected_move_30d": log_dict.get("regime_details", {}).get("expected_move"),
             },
             "decisionLog": {
                 "regime": log_dict.get("regime", "HIGH"),
@@ -216,6 +298,150 @@ async def gatekeeper_check(req: GatekeeperRequest):
             status_code=500,
             content={"status": "error", "output": str(e)}
         )
+
+@app.get("/api/portfolio/risk")
+def get_portfolio_risk():
+    """
+    Returns aggregate portfolio risk metrics using RiskEngine.
+    Used by Portfolio & Risk view.
+    """
+    try:
+        # TODO: Get current portfolio from session or database
+        portfolio = []
+
+        # Mock implementation - returns static risk metrics
+        # In production, calculate using RiskEngine and actual portfolio
+        return JSONResponse({
+            "total_capital_at_risk": 4200,
+            "max_risk_per_trade": 1000,
+            "daily_drawdown": -150.0,
+            "net_delta": 142,
+            "sector_exposure": [
+                {
+                    "name": "Technology",
+                    "value": 0.45,
+                    "limit": 0.25,
+                    "status": "critical",
+                },
+                {
+                    "name": "Finance",
+                    "value": 0.25,
+                    "limit": 0.25,
+                    "status": "normal",
+                },
+                {
+                    "name": "Healthcare",
+                    "value": 0.15,
+                    "limit": 0.25,
+                    "status": "normal",
+                },
+                {
+                    "name": "Energy",
+                    "value": 0.15,
+                    "limit": 0.25,
+                    "status": "normal",
+                },
+            ],
+            "alerts": [
+                {
+                    "type": "concentration",
+                    "severity": "critical",
+                    "message": "Technology sector at 45% exceeds limit of 25%",
+                    "recommendation": "Consider reducing tech exposure or closing positions",
+                }
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Portfolio risk error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/market/snapshot/{symbol}")
+def get_market_snapshot(symbol: str):
+    """
+    Returns comprehensive market snapshot for a symbol.
+    Used by live ticker and market regime detection.
+    """
+    try:
+        symbol = symbol.upper()
+
+        # Get price data
+        current_price = market_data.get_current_price(symbol)
+
+        # Mock implementation - returns static market snapshot
+        # In production, integrate with VolEngine, EventLoader, MarketData
+        return JSONResponse({
+            "symbol": symbol,
+            "current_price": current_price,
+            "change_pct": 1.2,
+            "volume": 2500000,
+            "avg_volume": 2100000,
+            "relative_strength": 0.75,
+            "volatility": {
+                "annual": 0.32,
+                "daily": 0.02,
+                "iv_rank": 0.78,
+                "regime": "HIGH",
+                "expected_move_30d": {
+                    "dollars": 32.50,
+                    "pct": 0.075,
+                    "upper": current_price + 32.50,
+                    "lower": current_price - 32.50,
+                }
+            },
+            "upcoming_events": [
+                {
+                    "type": "earnings",
+                    "days_until": None,
+                    "blocks_dte": [30, 45]
+                }
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Market snapshot error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/events/calendar")
+def get_event_calendar():
+    """
+    Returns upcoming earnings and macro events.
+    Used by event calendar and dashboard blocking event display.
+    """
+    try:
+        # Mock implementation - returns static event calendar
+        # In production, integrate with EventLoader
+        return JSONResponse({
+            "earnings": {
+                "AAPL": {
+                    "days_until": 15,
+                    "date": "2026-03-01",
+                },
+                "MSFT": {
+                    "days_until": 22,
+                    "date": "2026-03-08",
+                },
+                "NVDA": {
+                    "days_until": 8,
+                    "date": "2026-02-24",
+                },
+            },
+            "macro": [
+                {
+                    "name": "FOMC Meeting",
+                    "date": "2026-03-15",
+                    "days_until": 28,
+                    "impact": "high"
+                },
+                {
+                    "name": "CPI Release",
+                    "date": "2026-03-10",
+                    "days_until": 23,
+                    "impact": "high"
+                },
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Event calendar error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 # --- Legacy/Agent Endpoint (Optional) ---
 def invoke_agent(prompt: str) -> dict:
