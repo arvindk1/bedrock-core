@@ -1,809 +1,774 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Options Scanner</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link
-    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap"
-    rel="stylesheet">
-  <style>
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Option Scanner</title>
+    <meta name="description" content="Option Scanner — quantitative options trading terminal">
 
-    :root {
-      --bg-primary: #0a0e14;
-      --bg-secondary: #111820;
-      --bg-card: #151c26;
-      --bg-input: #0d1219;
-      --border: #1e2a38;
-      --border-focus: #00e08e;
-      --accent: #00e08e;
-      --accent-dim: #00c07a;
-      --accent-glow: rgba(0, 224, 142, 0.15);
-      --text-primary: #e4e8ee;
-      --text-secondary: #7a8ba0;
-      --text-muted: #4a5a6e;
-      --error: #ff4d6a;
-      --error-bg: rgba(255, 77, 106, 0.08);
-      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-      --font-sans: 'DM Sans', system-ui, sans-serif;
-    }
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-    body {
-      font-family: var(--font-sans);
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      position: relative;
-      overflow-x: hidden;
-    }
+    <!-- Design System -->
+    <link rel="stylesheet" href="terminal.css">
 
-    /* Subtle scan-line overlay */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background: repeating-linear-gradient(0deg,
-          transparent,
-          transparent 2px,
-          rgba(0, 0, 0, 0.03) 2px,
-          rgba(0, 0, 0, 0.03) 4px);
-      pointer-events: none;
-      z-index: 9999;
-    }
+    <style>
+        /* ── View active state ─────────────────────────────────────────────── */
+        .hd-view.active { display: grid; }
 
-    /* Grid background pattern */
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(30, 42, 56, 0.3) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(30, 42, 56, 0.3) 1px, transparent 1px);
-      background-size: 60px 60px;
-      pointer-events: none;
-      z-index: 0;
-    }
+        /* ── Two-col pipeline layout ──────────────────────────────────────── */
+        .hd-pipeline-container {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            gap: 20px;
+            align-items: start;
+        }
 
-    .container {
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      max-width: 640px;
-      padding: 2rem 1.5rem;
-    }
+        /* ── Two-col generic ──────────────────────────────────────────────── */
+        .hd-container-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
 
-    /* Header */
-    header {
-      margin-bottom: 2.5rem;
-      padding-bottom: 1.5rem;
-      border-bottom: 1px solid var(--border);
-      position: relative;
-    }
+        /* ── Scan form override (align inputs + button baseline) ──────────── */
+        .scan-form-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr) auto;
+            gap: 12px;
+            align-items: end;
+        }
 
-    header::after {
-      content: '';
-      position: absolute;
-      bottom: -1px;
-      left: 0;
-      width: 80px;
-      height: 1px;
-      background: var(--accent);
-      box-shadow: 0 0 12px var(--accent-glow);
-    }
+        /* Scan mode segmented control row */
+        .scan-mode-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
 
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 0.5rem;
-    }
+        .scan-mode-row .seg-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--color-text-muted);
+            font-weight: 700;
+        }
 
-    .logo-icon {
-      width: 32px;
-      height: 32px;
-      border: 2px solid var(--accent);
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--font-mono);
-      font-weight: 700;
-      font-size: 0.75rem;
-      color: var(--accent);
-      position: relative;
-    }
+        /* Portfolio KPI row */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
 
-    .logo-icon::before {
-      content: '▲';
-      font-size: 14px;
-    }
+        /* Positions table wrapper = toolbar on top, borderless join */
+        .positions-toolbar {
+            border-radius: 8px 8px 0 0;
+        }
 
-    h1 {
-      font-family: var(--font-mono);
-      font-size: 1.25rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      color: var(--text-primary);
-    }
+        .positions-table-wrap {
+            background: var(--bg-surface);
+            border: 1px solid var(--color-border);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            overflow-x: auto;
+            box-shadow: var(--shadow-card);
+        }
 
-    .subtitle {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
+        /* Status bar for win/neutral/lose */
+        .win-stats-row {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            font-family: var(--font-mono);
+        }
 
-    /* Form */
-    .form-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
+        .win-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
 
-    .field-group {
-      margin-bottom: 1.25rem;
-    }
+        .win-stat-num { font-size: 1.6rem; font-weight: 800; line-height: 1; }
+        .win-stat-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--color-text-muted); margin-top: 2px; }
 
-    .field-group:last-child {
-      margin-bottom: 0;
-    }
+        .win-stat.win  .win-stat-num { color: var(--accent-green-lt); }
+        .win-stat.neutral .win-stat-num { color: var(--accent-amber); }
+        .win-stat.lose .win-stat-num { color: var(--accent-red); }
 
-    label {
-      display: block;
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      font-weight: 500;
-      color: var(--text-secondary);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-bottom: 0.5rem;
-    }
+        /* Corner action button in card title */
+        .hd-card-title .card-action-btn {
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            background: var(--accent-indigo-dim);
+            color: var(--accent-indigo-hover);
+            border: 1px solid rgba(99,102,241,0.3);
+            border-radius: 4px;
+            cursor: pointer;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            transition: background 0.12s;
+        }
 
-    input,
-    select {
-      width: 100%;
-      padding: 0.625rem 0.75rem;
-      font-family: var(--font-mono);
-      font-size: 0.875rem;
-      color: var(--text-primary);
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
+        .hd-card-title .card-action-btn:hover { background: rgba(99,102,241,0.22); }
 
-    input:focus,
-    select:focus {
-      border-color: var(--border-focus);
-      box-shadow: 0 0 0 3px var(--accent-glow);
-    }
+        /* Volatility context grid */
+        .vol-context-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 24px;
+            align-items: start;
+        }
 
-    input::placeholder {
-      color: var(--text-muted);
-    }
+        /* Inline mini metrics */
+        .inline-kpis {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
 
-    select {
-      cursor: pointer;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%237a8ba0' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 0.75rem center;
-      padding-right: 2rem;
-    }
+        .inline-kpi {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
 
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
+        .inline-kpi-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--color-text-muted);
+            font-weight: 700;
+        }
 
-    .row-3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr auto;
-      gap: 1rem;
-      align-items: end;
-    }
+        .inline-kpi-value {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+        }
 
-    /* Button */
-    .btn-scan {
-      width: 100%;
-      padding: 0.75rem 1.5rem;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--bg-primary);
-      background: var(--accent);
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .btn-scan:hover:not(:disabled) {
-      background: var(--accent-dim);
-      box-shadow: 0 0 20px var(--accent-glow);
-    }
-
-    .btn-scan:active:not(:disabled) {
-      transform: scale(0.98);
-    }
-
-    .btn-scan:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-scan .spinner {
-      display: none;
-      width: 14px;
-      height: 14px;
-      border: 2px solid transparent;
-      border-top-color: var(--bg-primary);
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      margin-right: 0.5rem;
-    }
-
-    .btn-scan.loading .spinner {
-      display: inline-block;
-    }
-
-    .btn-scan.loading .btn-text {
-      opacity: 0.7;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    /* Results */
-    .results-area {
-      display: none;
-    }
-
-    .results-area.visible {
-      display: block;
-      animation: slideUp 0.3s ease-out;
-    }
-
-    @keyframes slideUp {
-      from {
-        opacity: 0;
-        transform: translateY(12px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .result-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      overflow: hidden;
-    }
-
-    .result-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.875rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-secondary);
-    }
-
-    .result-label {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--text-secondary);
-    }
-
-    .result-status {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      font-weight: 600;
-      padding: 0.2rem 0.5rem;
-      border-radius: 3px;
-      letter-spacing: 0.04em;
-    }
-
-    .result-status.success {
-      color: var(--accent);
-      background: var(--accent-glow);
-    }
-
-    .result-status.error {
-      color: var(--error);
-      background: var(--error-bg);
-    }
-
-    .result-body {
-      padding: 1.25rem;
-    }
-
-    .result-output {
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      line-height: 1.7;
-      color: var(--text-primary);
-      white-space: pre-wrap;
-      word-break: break-word;
-      tab-size: 2;
-    }
-
-    /* Error card */
-    .error-card {
-      background: var(--bg-card);
-      border: 1px solid rgba(255, 77, 106, 0.2);
-      border-radius: 6px;
-      padding: 1.25rem;
-    }
-
-    .error-title {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--error);
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      margin-bottom: 0.5rem;
-    }
-
-    .error-message {
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      line-height: 1.5;
-      color: var(--text-secondary);
-    }
-
-    /* Footer */
-    footer {
-      margin-top: 2rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--border);
-      font-family: var(--font-mono);
-      font-size: 0.65rem;
-      color: var(--text-muted);
-      letter-spacing: 0.04em;
-      text-align: center;
-    }
-
-    /* Responsive */
-    @media (max-width: 480px) {
-      .container {
-        padding: 1.25rem 1rem;
-      }
-
-      .row,
-      .row-3 {
-        grid-template-columns: 1fr;
-      }
-
-      h1 {
-        font-size: 1.1rem;
-      }
-    }
-  </style>
+        @media (max-width: 900px) {
+            .hd-pipeline-container { grid-template-columns: 1fr; }
+            .hd-container-2col     { grid-template-columns: 1fr; }
+            .kpi-row               { grid-template-columns: repeat(2, 1fr); }
+            .scan-form-grid        { grid-template-columns: repeat(2, 1fr) auto; }
+        }
+    </style>
 </head>
-
 <body>
-  <div class="container">
-    <header>
-      <div class="logo">
-        <div class="logo-icon"></div>
-        <h1>Hedge Fund Desk</h1>
-      </div>
-      <div class="subtitle">Bedrock AgentCore &middot; Risk &amp; Volatility Engine</div>
+
+    <!-- =====================================================================
+         HEADER
+         ===================================================================== -->
+    <header class="hd-header">
+
+        <!-- Brand -->
+        <div class="hd-brand">
+            <svg class="hd-icon" viewBox="0 0 24 24">
+                <path d="M12 2L2 7V17C2 19.76 6.48 22 12 22C17.52 22 22 19.76 22 17V7L12 2Z"/>
+                <path d="M12 12L2 7"/><path d="M12 12V22"/>
+            </svg>
+            <h1 class="hd-title">OPTION SCANNER</h1>
+        </div>
+
+        <!-- Regime strip -->
+        <div class="hd-regime-strip">
+            <span id="regime-badge" style="font-family:var(--font-mono); font-weight:700; font-size:14px; color:var(--accent-amber);">MED</span>
+            <span style="font-size:10px; color:var(--color-text-muted); font-family:var(--font-mono);">VOL</span>
+            <span id="regime-bias" style="font-size:11px; color:var(--color-text-muted); margin-left:4px; font-family:var(--font-mono);">—</span>
+        </div>
+
+        <!-- Quick stats -->
+        <div class="hd-header-quick-stats">
+            <span>IV Rank <strong id="iv-rank">—</strong></span>
+            <span>Trend <strong id="spy-trend" style="color:var(--accent-green-lt);">—</strong></span>
+            <span>Policy <strong id="policy-mode-display" style="color:var(--color-text-muted);">—</strong></span>
+        </div>
+
+        <!-- Ticker -->
+        <div class="hd-ticker">
+            <span class="ticker-symbol" id="ticker-symbol">SPY</span>
+            <span class="ticker-price" id="ticker-price">$—</span>
+            <span class="ticker-change" id="ticker-change">—</span>
+        </div>
+
+        <!-- System status -->
+        <div class="hd-status">
+            <span class="hd-status-dot"></span>
+            <span>ONLINE</span>
+        </div>
+
     </header>
 
-    <!-- Navigation Tabs -->
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="scanner">Smart Scanner</button>
-      <button class="tab-btn" data-tab="gatekeeper">Gatekeeper</button>
-    </div>
+    <!-- =====================================================================
+         LAYOUT: SIDEBAR + CONTENT
+         ===================================================================== -->
+    <div class="hd-layout">
 
-    <!-- SMART SCANNER TAB -->
-    <div id="scanner" class="tab-content active">
-      <div class="card-intro">
-        <p>Policy-based strategy selection. Filters for <strong>30-60 DTE</strong>, <strong>30-50 Delta</strong>, and
-          <strong>High Liquidity</strong>.</p>
-      </div>
+        <!-- Sidebar -->
+        <aside class="hd-sidebar">
+            <span class="hd-sidebar-section-label">Modules</span>
 
-      <form id="scanForm" class="form-card" autocomplete="off">
-        <div class="field-group">
-          <label for="scan_symbol">Symbol</label>
-          <input type="text" id="scan_symbol" name="symbol" placeholder="AAPL" required pattern="[A-Za-z]{1,5}"
-            title="1-5 letter ticker symbol">
-        </div>
+            <button class="hd-sidebar-btn active" data-view="dashboard">
+                <svg class="hd-sidebar-icon" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                </svg>
+                Analyze
+            </button>
 
-        <div class="field-group">
-          <label for="strategy_pref">Strategy Bias (Optional)</label>
-          <select id="strategy_pref" name="strategy_preference">
-            <option value="">Auto (Based on Vol Regime)</option>
-            <option value="VERTICAL_SPREAD">Vertical Spread</option>
-            <option value="IRON_CONDOR">Iron Condor</option>
-            <option value="CALENDAR">Calendar Spread</option>
-          </select>
-        </div>
+            <button class="hd-sidebar-btn" data-view="scan">
+                <svg class="hd-sidebar-icon" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                Scan &amp; Discovery
+            </button>
 
-        <div class="field-group">
-          <button type="submit" class="btn-scan" id="scanBtn">
-            <span class="spinner"></span>
-            <span class="btn-text">Find Opportunities</span>
-          </button>
-        </div>
-      </form>
+            <button class="hd-sidebar-btn" data-view="portfolio">
+                <svg class="hd-sidebar-icon" viewBox="0 0 24 24">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                Positions
+            </button>
 
-      <div id="scanResults" class="results-area"></div>
-    </div>
+            <button class="hd-sidebar-btn" data-view="audit">
+                <svg class="hd-sidebar-icon" viewBox="0 0 24 24">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                </svg>
+                Decision Audit
+            </button>
 
-    <!-- GATEKEEPER TAB -->
-    <div id="gatekeeper" class="tab-content">
-      <div class="card-intro">
-        <p>Scored validation. Checks <strong>Risk Limits</strong>, <strong>Events</strong>, and <strong>Greeks</strong>
-          before approval.</p>
-      </div>
+            <span class="hd-sidebar-section-label" style="margin-top:auto;">System</span>
 
-      <form id="gateForm" class="form-card" autocomplete="off">
-        <div class="row">
-          <div>
-            <label for="gk_symbol">Symbol</label>
-            <input type="text" id="gk_symbol" placeholder="NVDA" required>
-          </div>
-          <div>
-            <label for="gk_strategy">Strategy</label>
-            <select id="gk_strategy">
-              <option value="BULL_CALL_DEBIT_SPREAD">Bull Call Spread</option>
-              <option value="BEAR_PUT_DEBIT_SPREAD">Bear Put Spread</option>
-              <option value="IRON_CONDOR">Iron Condor</option>
-              <option value="PUT_CREDIT_SPREAD">Put Credit Spread</option>
-            </select>
-          </div>
-        </div>
+            <button class="hd-sidebar-btn" data-view="settings">
+                <svg class="hd-sidebar-icon" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                Settings
+            </button>
+        </aside>
 
-        <div class="row">
-          <div>
-            <label for="gk_expiry">Expiration</label>
-            <input type="date" id="gk_expiry" required>
-          </div>
-          <div>
-            <label for="gk_loss">Max Loss ($)</label>
-            <input type="number" id="gk_loss" value="500" step="50">
-          </div>
-        </div>
+        <!-- Main content -->
+        <div class="hd-content">
+            <main class="hd-main">
 
-        <div class="field-group" style="margin-top: 1rem;">
-          <button type="submit" class="btn-scan" id="checkBtn">
-            <span class="spinner"></span>
-            <span class="btn-text">Validate Trade</span>
-          </button>
-        </div>
-      </form>
+                <!-- ===========================================================
+                     ANALYZE VIEW (was "dashboard")
+                     =========================================================== -->
+                <div id="view-dashboard" class="hd-view active">
 
-      <div id="gateResults" class="results-area"></div>
-    </div>
+                    <!-- Page header -->
+                    <div class="hd-page-header">
+                        <span class="hd-page-title">Analyze</span>
+                        <div class="hd-header-quick-stats">
+                            <span>IV Rank <strong id="dash-iv-rank" class="text-success">—</strong></span>
+                        </div>
+                    </div>
 
-    <footer>Powered by AWS Bedrock AgentCore &middot; v2.0 (Hedge Fund Grade)</footer>
-  </div>
+                    <!-- KPI Row -->
+                    <div class="kpi-row">
+                        <div class="kpi-card">
+                            <span class="kpi-label">Net Delta</span>
+                            <span class="kpi-value" id="net-delta">—</span>
+                            <span class="kpi-sub">Portfolio</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Daily Drawdown</span>
+                            <span class="kpi-value warning" id="daily-dd">—</span>
+                            <span class="kpi-sub">Today</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Capital Used</span>
+                            <span class="kpi-value" id="capital-used">—</span>
+                            <div class="hd-capital-bar" style="margin-top:8px;">
+                                <div class="hd-capital-fill" id="capital-fill-dash" style="width:0%;"></div>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">P&amp;L Today</span>
+                            <span class="kpi-value" id="pnl-today">—</span>
+                            <span class="kpi-sub">Unrealized</span>
+                        </div>
+                    </div>
 
-  <style>
-    /* Additions for Tabs */
-    .tabs {
-      display: flex;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-      border-bottom: 1px solid var(--border);
-    }
+                    <!-- Market Regime + Scan Configuration -->
+                    <div class="hd-card">
 
-    .tab-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding: 0.75rem 0;
-      cursor: pointer;
-      position: relative;
-      transition: color 0.2s;
-    }
+                        <!-- Card title with Regime badge -->
+                        <div class="hd-card-title">
+                            Market Regime &amp; Scan Configuration
+                            <span id="dash-regime-badge" style="font-family:var(--font-mono); font-weight:800; font-size:15px; color:var(--accent-amber); letter-spacing:0.05em;">MED</span>
+                        </div>
 
-    .tab-btn:hover {
-      color: var(--text-primary);
-    }
 
-    .tab-btn.active {
-      color: var(--accent);
-    }
 
-    .tab-btn.active::after {
-      content: '';
-      position: absolute;
-      bottom: -1px;
-      left: 0;
-      width: 100%;
-      height: 2px;
-      background: var(--accent);
-      box-shadow: 0 0 8px var(--accent-glow);
-    }
+                        <!-- Scan form -->
+                        <div class="scan-form-grid">
+                            <div>
+                                <label class="hd-input-label" for="scan-symbol">Symbol</label>
+                                <input type="text" id="scan-symbol" class="hd-input" placeholder="AAPL" value="AAPL" style="text-transform:uppercase;">
+                            </div>
+                            <div>
+                                <label class="hd-input-label" for="scan-start-date">Start Date</label>
+                                <input type="date" id="scan-start-date" class="hd-input" value="2026-03-01">
+                            </div>
+                            <div>
+                                <label class="hd-input-label" for="scan-end-date">End Date</label>
+                                <input type="date" id="scan-end-date" class="hd-input" value="2026-06-01">
+                            </div>
+                            <div>
+                                <label class="hd-input-label" for="scan-policy">Policy</label>
+                                <select id="scan-policy" class="hd-input">
+                                    <option value="tight">Tight ($1K)</option>
+                                    <option value="moderate">Moderate ($2K)</option>
+                                    <option value="aggressive">Aggressive ($5K)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="hd-input-label" for="scan-top-n">Top N</label>
+                                <input type="number" id="scan-top-n" class="hd-input" min="1" max="50" value="5">
+                            </div>
+                            <div>
+                                <button class="hd-btn hd-btn-primary" onclick="initiateDiscoveryScan()" id="scan-btn">
+                                    Scan
+                                </button>
+                            </div>
+                        </div>
+                    </div>
 
-    .tab-content {
-      display: none;
-      animation: fadeIn 0.3s ease;
-    }
+                    <!-- Volatility Context Card -->
+                    <div class="hd-card">
+                        <div class="hd-card-title">Event Volatility Context</div>
 
-    .tab-content.active {
-      display: block;
-    }
+                        <div class="vol-context-grid">
+                            <!-- Expected Move Bands -->
+                            <div>
+                                <div style="margin-bottom:16px;">
+                                    <span class="kpi-label" style="display:block; margin-bottom:4px;">Current Price</span>
+                                    <div style="font-family:var(--font-mono); font-size:2rem; font-weight:700; color:var(--accent-indigo);">
+                                        $<span id="vol-current-price">—</span>
+                                    </div>
+                                </div>
 
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(5px);
-      }
+                                <span class="kpi-label" style="display:block; margin-bottom:10px;">Expected Move Range (30 days)</span>
 
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
+                                <div class="hd-move-band sigma2" style="font-family:var(--font-mono);">
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                                        <span style="color:var(--color-text-muted); font-size:12px;">2σ (~5% chance)</span>
+                                        <span style="color:var(--accent-red); font-weight:700;" id="vol-2sigma-range">—</span>
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-muted);">
+                                        <span id="vol-2sigma-down">—</span>
+                                        <span id="vol-2sigma-up">—</span>
+                                    </div>
+                                </div>
 
-    .card-intro {
-      margin-bottom: 1rem;
-      font-size: 0.85rem;
-      color: var(--text-secondary);
-      line-height: 1.5;
-    }
+                                <div class="hd-move-band sigma1" style="font-family:var(--font-mono);">
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                                        <span style="color:var(--color-text-muted); font-size:12px;">1σ (~68%)</span>
+                                        <span style="color:var(--accent-amber); font-weight:700;" id="vol-1sigma-range">—</span>
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-muted);">
+                                        <span id="vol-1sigma-down">—</span>
+                                        <span id="vol-1sigma-up">—</span>
+                                    </div>
+                                </div>
+                            </div>
 
-    .card-intro strong {
-      color: var(--text-primary);
-    }
+                            <!-- Vol Metrics column -->
+                            <div style="display:flex; flex-direction:column; gap:10px;">
+                                <div class="kpi-card">
+                                    <span class="kpi-label">Annual Vol</span>
+                                    <span class="kpi-value" id="vol-annual" style="font-size:1.4rem;">—</span>
+                                </div>
+                                <div class="kpi-card">
+                                    <span class="kpi-label">Daily Vol</span>
+                                    <span class="kpi-value" id="vol-daily" style="font-size:1.4rem;">—</span>
+                                </div>
+                            </div>
 
-    /* Score Badge */
-    .score-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      background: var(--bg-primary);
-      border: 3px solid var(--border);
-      color: var(--text-primary);
-      font-size: 1.5rem;
-      font-weight: 700;
-    }
+                            <!-- IV + Policy column -->
+                            <div style="display:flex; flex-direction:column; gap:10px;">
+                                <div class="kpi-card">
+                                    <span class="kpi-label">IV Rank</span>
+                                    <span class="kpi-value" id="vol-iv-rank" style="font-size:1.4rem;">—</span>
+                                </div>
+                                <div class="kpi-card">
+                                    <span class="kpi-label">Event Policy</span>
+                                    <span class="kpi-value positive" id="vol-event-policy" style="font-size:1.1rem;">PLAY</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-    .score-badge.pass {
-      border-color: var(--accent);
-      color: var(--accent);
-      box-shadow: 0 0 15px var(--accent-glow);
-    }
+                    <!-- Live System Events -->
+                    <div class="hd-card">
+                        <div class="hd-card-title">Live System Events</div>
+                        <div id="live-feed" style="max-height:260px; overflow-y:auto;">
+                            <div class="log-entry log-info">System initialized — ready for trading operations</div>
+                        </div>
+                    </div>
 
-    .score-badge.fail {
-      border-color: var(--error);
-      color: var(--error);
-    }
+                </div><!-- /view-dashboard -->
 
-    .score-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.75rem;
-      margin-top: 1rem;
-    }
 
-    .score-item {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      padding: 0.5rem;
-      background: rgba(255, 255, 255, 0.03);
-      border-radius: 4px;
-    }
-  </style>
+                <!-- ===========================================================
+                     SCAN & DISCOVERY VIEW
+                     =========================================================== -->
+                <div id="view-scan" class="hd-view hidden">
+                    <div class="hd-pipeline-container">
 
-  <script>
-    (function () {
-      // --- Tabs Logic ---
-      const tabs = document.querySelectorAll('.tab-btn');
-      const contents = document.querySelectorAll('.tab-content');
+                        <!-- Left: Filter Pipeline -->
+                        <div class="hd-card" style="padding:16px;">
+                            <div class="hd-card-title">Filter Pipeline</div>
+                            <div class="hd-pipeline">
 
-      tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-          tabs.forEach(t => t.classList.remove('active'));
-          contents.forEach(c => c.classList.remove('active'));
-          tab.classList.add('active');
-          document.getElementById(tab.dataset.tab).classList.add('active');
-        });
-      });
+                                <div class="hd-pipeline-stage-card active" data-stage="generated" onclick="selectPipelineStage('generated')">
+                                    <div class="hd-pipeline-stage-left">
+                                        <span class="hd-pipeline-stage-label">Generated</span>
+                                    </div>
+                                    <span class="hd-pipeline-stage-count" id="count-generated">—</span>
+                                </div>
 
-      // --- Dates ---
-      const today = new Date();
-      const future = new Date(today);
-      future.setDate(future.getDate() + 45); // Default to 45 DTE
-      document.getElementById('gk_expiry').value = future.toISOString().slice(0, 10);
+                                <div class="hd-pipeline-connector-line"></div>
 
-      // --- Helpers ---
-      function esc(s) {
-        if (typeof s !== 'string') return s;
-        const d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-      }
+                                <div class="hd-pipeline-stage-card" data-stage="event" onclick="selectPipelineStage('event')">
+                                    <div class="hd-pipeline-stage-left">
+                                        <span class="hd-pipeline-stage-label">Event Filter</span>
+                                        <span class="hd-pipeline-rejected-badge" id="rejected-event"></span>
+                                    </div>
+                                    <span class="hd-pipeline-stage-count" id="count-event">—</span>
+                                </div>
 
-      function renderError(el, title, msg) {
-        el.innerHTML = `
-      <div class="error-card">
-        <div class="error-title">${esc(title)}</div>
-        <div class="error-message">${esc(msg)}</div>
-      </div>`;
-        el.className = 'results-area visible';
-      }
+                                <div class="hd-pipeline-connector-line"></div>
 
-      // --- Scanner Logic ---
-      const scanForm = document.getElementById('scanForm');
-      const scanBtn = document.getElementById('scanBtn');
-      const scanResults = document.getElementById('scanResults');
+                                <div class="hd-pipeline-stage-card" data-stage="risk" onclick="selectPipelineStage('risk')">
+                                    <div class="hd-pipeline-stage-left">
+                                        <span class="hd-pipeline-stage-label">Risk Gate</span>
+                                        <span class="hd-pipeline-rejected-badge" id="rejected-risk"></span>
+                                    </div>
+                                    <span class="hd-pipeline-stage-count" id="count-risk">—</span>
+                                </div>
 
-      scanForm.addEventListener('submit', async function (e) {
-        e.preventDefault();
-        const symbol = document.getElementById('scan_symbol').value.trim();
-        const strat = document.getElementById('strategy_pref').value;
+                                <div class="hd-pipeline-connector-line"></div>
 
-        if (!symbol) return;
+                                <div class="hd-pipeline-stage-card" data-stage="gatekeeper" onclick="selectPipelineStage('gatekeeper')">
+                                    <div class="hd-pipeline-stage-left">
+                                        <span class="hd-pipeline-stage-label">Gatekeeper</span>
+                                        <span class="hd-pipeline-rejected-badge" id="rejected-gatekeeper"></span>
+                                    </div>
+                                    <span class="hd-pipeline-stage-count" id="count-gatekeeper">—</span>
+                                </div>
 
-        scanBtn.classList.add('loading');
-        scanBtn.disabled = true;
-        scanResults.innerHTML = '';
+                                <div class="hd-pipeline-connector-line"></div>
 
-        try {
-          const resp = await fetch('/api/smart-scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol: symbol, strategy_preference: strat || null })
-          });
-          const data = await resp.json();
+                                <div class="hd-pipeline-stage-card" data-stage="correlation" onclick="selectPipelineStage('correlation')">
+                                    <div class="hd-pipeline-stage-left">
+                                        <span class="hd-pipeline-stage-label">Correlation</span>
+                                        <span class="hd-pipeline-rejected-badge" id="rejected-correlation"></span>
+                                    </div>
+                                    <span class="hd-pipeline-stage-count" id="count-correlation">—</span>
+                                </div>
 
-          if (data.status === 'success') {
-            let html = `
-           <div class="result-card">
-             <div class="result-header">
-               <span class="result-label">SCAN RESULTS: ${esc(data.symbol)} ($${data.current_price})</span>
-               <span class="result-status success">${data.opportunities.length} Found</span>
-             </div>
-             <div class="result-body">`;
+                                <div class="hd-pipeline-connector-line"></div>
 
-            if (data.opportunities.length === 0) {
-              html += `<div class="result-output">No opportunities found matching strict criteria.</div>`;
-            } else {
-              data.opportunities.forEach(opp => {
-                html += `
-                <div style="margin-bottom: 1rem; border-left: 2px solid var(--accent); padding-left: 1rem;">
-                  <div style="color: var(--accent); font-weight: bold;">${esc(opp.strategy)}</div>
-                  <div style="color: var(--text-secondary); font-size: 0.8rem;">${esc(opp.description)}</div>
-                  <div class="score-grid">
-                     <div class="score-item"><span>Cost/Credit:</span> <span>$${opp.cost ? opp.cost.toFixed(2) : '-'}</span></div>
-                     <div class="score-item"><span>Max Profit:</span> <span>$${opp.max_profit ? opp.max_profit.toFixed(2) : '-'}</span></div>
-                  </div>
-                </div>`;
-              });
+                                <div class="hd-pipeline-stage-card status-success" data-stage="final" onclick="selectPipelineStage('final')">
+                                    <div class="hd-pipeline-stage-left">
+                                        <span class="hd-pipeline-stage-label">Final Picks</span>
+                                    </div>
+                                    <span class="hd-pipeline-stage-count" id="count-final" style="color:var(--accent-green-lt);">—</span>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <!-- Right: Trade Cards + Rejection Panel -->
+                        <div>
+                            <div id="picks-cards-container">
+                                <p style="color:var(--color-text-muted); padding:40px; text-align:center; font-family:var(--font-mono); font-size:12.5px;">Run a scan to see results</p>
+                            </div>
+
+                            <!-- Rejection panel with tabs -->
+                            <div id="rejection-panel-container" class="hd-card" style="margin-top:16px; padding:0; overflow:hidden;">
+                                <div class="hd-rejection-tabs">
+                                    <button class="hd-rejection-tab active" data-rejection-tab="risk" onclick="switchRejectionTab('risk')">
+                                        Risk <span class="hd-rejection-count" id="rej-count-risk">0</span>
+                                    </button>
+                                    <button class="hd-rejection-tab" data-rejection-tab="gatekeeper" onclick="switchRejectionTab('gatekeeper')">
+                                        Gatekeeper <span class="hd-rejection-count" id="rej-count-gatekeeper">0</span>
+                                    </button>
+                                    <button class="hd-rejection-tab" data-rejection-tab="event" onclick="switchRejectionTab('event')">
+                                        Event <span class="hd-rejection-count" id="rej-count-event">0</span>
+                                    </button>
+                                    <button class="hd-rejection-tab" data-rejection-tab="correlation" onclick="switchRejectionTab('correlation')">
+                                        Correlation <span class="hd-rejection-count" id="rej-count-correlation">0</span>
+                                    </button>
+                                </div>
+                                <div id="rejection-tab-content" style="padding:0;">
+                                    <p style="color:var(--color-text-muted); padding:24px; text-align:center; font-family:var(--font-mono); font-size:12px;">No scan results yet</p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div><!-- /view-scan -->
+
+
+                <!-- ===========================================================
+                     POSITIONS VIEW (was "portfolio")
+                     =========================================================== -->
+                <div id="view-portfolio" class="hd-view hidden">
+
+                    <!-- Page header -->
+                    <div class="hd-page-header">
+                        <span class="hd-page-title">Positions</span>
+                        <button class="hd-btn hd-btn-primary hd-btn-small">
+                            + New Position
+                        </button>
+                    </div>
+
+                    <!-- KPI row -->
+                    <div class="kpi-row">
+                        <div class="kpi-card">
+                            <span class="kpi-label">Capital Utilization</span>
+                            <span class="kpi-value" id="capital-util">—</span>
+                            <div class="hd-capital-bar">
+                                <div class="hd-capital-fill" id="capital-fill" style="width:0%;"></div>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Net Delta</span>
+                            <span class="kpi-value" id="port-delta">—</span>
+                            <span class="kpi-sub">Portfolio exposure</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Daily P&amp;L</span>
+                            <span class="kpi-value" id="port-pnl">—</span>
+                            <span class="kpi-sub">Unrealized</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Net Vega / Theta</span>
+                            <span class="kpi-value" id="port-greeks">—</span>
+                            <span class="kpi-sub">Greeks balance</span>
+                        </div>
+                    </div>
+
+                    <!-- Win / Neutral / Lose status bar -->
+                    <div class="status-bar">
+                        <div class="win-stats-row">
+                            <div class="win-stat win">
+                                <span class="win-stat-num" id="port-win-count">—</span>
+                                <span class="win-stat-lbl">Winning</span>
+                            </div>
+                            <div class="status-bar-divider"></div>
+                            <div class="win-stat neutral">
+                                <span class="win-stat-num" id="port-neutral-count">—</span>
+                                <span class="win-stat-lbl">Neutral</span>
+                            </div>
+                            <div class="status-bar-divider"></div>
+                            <div class="win-stat lose">
+                                <span class="win-stat-num" id="port-lose-count">—</span>
+                                <span class="win-stat-lbl">Losing</span>
+                            </div>
+                        </div>
+
+                        <div class="status-bar-right">
+                            <span style="font-family:var(--font-mono); font-size:10px; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:0.1em;">
+                                Open positions: <strong id="port-total-count" style="color:var(--color-text-primary);">—</strong>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Sector + Correlation charts -->
+                    <div class="hd-container-2col">
+                        <div class="hd-card">
+                            <div class="hd-card-title">Sector Concentration</div>
+                            <div id="sector-chart"></div>
+                        </div>
+                        <div class="hd-card">
+                            <div class="hd-card-title">
+                                Correlation Matrix
+                                <span style="float:right; font-size:10px; color:var(--color-text-muted); font-family:var(--font-mono); font-weight:400;">30D</span>
+                            </div>
+                            <div id="correlation-matrix" style="display:grid; grid-template-columns:repeat(5,1fr); gap:3px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Active Positions table with toolbar -->
+                    <div>
+
+                        <!-- Table toolbar -->
+                        <div class="table-toolbar positions-toolbar">
+                            <div class="toolbar-search">
+                                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="positions-search" placeholder="Filter positions…" oninput="filterPositionsTable(this.value)">
+                            </div>
+
+                            <!-- Filter chips -->
+                            <button class="filter-chip active" onclick="filterPositionsByStatus('all', this)">All</button>
+                            <button class="filter-chip" onclick="filterPositionsByStatus('win', this)">Winning</button>
+                            <button class="filter-chip" onclick="filterPositionsByStatus('lose', this)">Losing</button>
+
+                            <div class="table-toolbar-right">
+                                <button class="btn btn-ghost btn-sm" onclick="loadPortfolioData()" title="Refresh">
+                                    ↻ Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Positions table -->
+                        <div class="positions-table-wrap">
+                            <table class="hd-table" id="positions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Symbol / Strategy</th>
+                                        <th>Qty</th>
+                                        <th>Cost Basis</th>
+                                        <th>Mark</th>
+                                        <th>Unrealized P&amp;L</th>
+                                        <th>Days Held</th>
+                                        <th>Greeks (Δ/Γ/Θ/V)</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="positions-table-body">
+                                    <tr>
+                                        <td colspan="8" style="text-align:center; color:var(--color-text-muted); padding:48px; font-family:var(--font-mono); font-size:12px;">
+                                            No active positions
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+
+                    <!-- Risk Alerts -->
+                    <div class="hd-card">
+                        <div class="hd-card-title">Risk Alerts</div>
+                        <div id="risk-alerts-container">
+                            <p style="color:var(--color-text-muted); padding:12px 0; font-size:13px;">No critical alerts</p>
+                        </div>
+                    </div>
+
+                </div><!-- /view-portfolio -->
+
+
+                <!-- ===========================================================
+                     DECISION AUDIT VIEW
+                     =========================================================== -->
+                <div id="view-audit" class="hd-view hidden">
+
+                    <div class="hd-page-header">
+                        <span class="hd-page-title">Decision Audit</span>
+                    </div>
+
+                    <!-- 4-metric summary -->
+                    <div class="kpi-row">
+                        <div class="kpi-card">
+                            <span class="kpi-label">Scan Symbol</span>
+                            <span class="kpi-value" id="audit-symbol" style="font-size:1.6rem;">—</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Regime</span>
+                            <span class="kpi-value" id="audit-regime">—</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Strategy Hint</span>
+                            <span class="kpi-value" id="audit-strategy" style="font-size:1rem;">—</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">SPY Trend</span>
+                            <span class="kpi-value" id="audit-spy-trend" style="font-size:1.1rem;">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Full Decision Log -->
+                    <div class="hd-card">
+                        <div class="hd-card-title">Full Decision Log</div>
+                        <div id="decision-log-container" style="font-family:var(--font-mono); font-size:12px; color:var(--color-text-muted); line-height:1.8; max-height:500px; overflow-y:auto; white-space:pre-wrap; word-break:break-word;">
+                            <p>No decision logs available. Run a scan to see results.</p>
+                        </div>
+                    </div>
+
+                    <!-- Rejection breakdown -->
+                    <div class="grid-2">
+                        <div class="hd-card">
+                            <div class="hd-card-title">Risk Rejections</div>
+                            <div id="risk-rejections-list" style="font-family:var(--font-mono); font-size:12px;">
+                                <p style="color:var(--color-text-muted);">—</p>
+                            </div>
+                        </div>
+                        <div class="hd-card">
+                            <div class="hd-card-title">Gatekeeper Rejections</div>
+                            <div id="gatekeeper-rejections-list" style="font-family:var(--font-mono); font-size:12px;">
+                                <p style="color:var(--color-text-muted);">—</p>
+                            </div>
+                        </div>
+                    </div>
+                </div><!-- /view-audit -->
+
+
+                <!-- ===========================================================
+                     SETTINGS VIEW
+                     =========================================================== -->
+                <div id="view-settings" class="hd-view hidden">
+                    <div class="hd-page-header">
+                        <span class="hd-page-title">Settings</span>
+                    </div>
+                    <div class="hd-card">
+                        <div class="hd-card-title">Configuration &amp; Lab</div>
+                        <p style="color:var(--color-text-muted); font-size:13px; padding:12px 0;">
+                            Configuration and experimental parameters will appear here.
+                        </p>
+                    </div>
+                </div><!-- /view-settings -->
+
+            </main>
+        </div><!-- .hd-content -->
+    </div><!-- .hd-layout -->
+
+    <script src="app.js"></script>
+
+    <!-- Stub for new scan mode control (safe — only adds missing function) -->
+    <script>
+        if (typeof setScanMode === 'undefined') {
+            function setScanMode(mode) {
+                document.querySelectorAll('#scan-mode-control .seg-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.mode === mode);
+                });
             }
-            html += `</div></div>`;
-            scanResults.innerHTML = html;
-            scanResults.className = 'results-area visible';
-          } else {
-            renderError(scanResults, 'Error', data.output);
-          }
-        } catch (err) {
-          renderError(scanResults, 'Network Error', err.message);
-        } finally {
-          scanBtn.classList.remove('loading');
-          scanBtn.disabled = false;
         }
-      });
 
-      // --- Gatekeeper Logic ---
-      const gateForm = document.getElementById('gateForm');
-      const checkBtn = document.getElementById('checkBtn');
-      const gateResults = document.getElementById('gateResults');
-
-      gateForm.addEventListener('submit', async function (e) {
-        e.preventDefault();
-        const symbol = document.getElementById('gk_symbol').value.trim();
-
-        checkBtn.classList.add('loading');
-        checkBtn.disabled = true;
-        gateResults.innerHTML = '';
-
-        try {
-          const resp = await fetch('/api/gatekeeper/check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              symbol: symbol,
-              strategy_type: document.getElementById('gk_strategy').value,
-              expiration_date: document.getElementById('gk_expiry').value,
-              max_loss: parseFloat(document.getElementById('gk_loss').value) || 500,
-              quantity: 1
-            })
-          });
-          const data = await resp.json();
-
-          if (data.status === 'success') {
-            const scoreClass = data.approved ? 'pass' : 'fail';
-            let html = `
-            <div class="result-card">
-              <div class="result-header">
-                <span class="result-label">GATEKEEPER ANALYSIS</span>
-                <span class="result-status ${data.approved ? 'success' : 'error'}">${data.approved ? 'APPROVED' : 'REJECTED'}</span>
-              </div>
-              <div class="result-body" style="display: flex; gap: 1.5rem; align-items: flex-start;">
-                 <div class="score-badge ${scoreClass}">${data.total_score}</div>
-                 <div style="flex: 1;">
-                   ${data.rejection_reason ? `<div style="color: var(--error); margin-bottom: 0.5rem; font-size: 0.9rem;">⛔ ${esc(data.rejection_reason)}</div>` : ''}
-                   <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Score Breakdown:</div>
-                   <div class="score-grid">
-                     ${Object.entries(data.breakdown).map(([k, v]) =>
-              `<div class="score-item"><span>${k}:</span> <span style="font-weight: bold; color: ${v < 0 ? 'var(--error)' : 'var(--success)'};">${v > 0 ? '+' : ''}${v}</span></div>`
-            ).join('')}
-                   </div>
-                 </div>
-              </div>`;
-
-            if (data.warnings && data.warnings.length > 0) {
-              html += `<div style="padding: 0 1.25rem 1.25rem;">
-               <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">Warnings:</div>
-               <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 1rem; margin-top: 0.25rem;">
-                 ${data.warnings.map(w => `<li>${esc(w)}</li>`).join('')}
-               </ul>
-             </div>`;
+        // Stub for filter helpers if not defined in app.js
+        if (typeof filterPositionsTable === 'undefined') {
+            function filterPositionsTable(q) {
+                const rows = document.querySelectorAll('#positions-table-body tr');
+                rows.forEach(r => {
+                    r.style.display = r.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+                });
             }
-
-            html += `</div>`;
-            gateResults.innerHTML = html;
-            gateResults.className = 'results-area visible';
-          } else {
-            renderError(gateResults, 'Error', data.output);
-          }
-        } catch (err) {
-          renderError(gateResults, 'Network Error', err.message);
-        } finally {
-          checkBtn.classList.remove('loading');
-          checkBtn.disabled = false;
         }
-      });
 
-    })();
-  </script>
+        if (typeof filterPositionsByStatus === 'undefined') {
+            function filterPositionsByStatus(status, btn) {
+                document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+                if (btn) btn.classList.add('active');
+                const rows = document.querySelectorAll('#positions-table-body tr');
+                rows.forEach(r => {
+                    r.style.display = (status === 'all' || r.classList.contains('row-' + status)) ? '' : 'none';
+                });
+            }
+        }
+    </script>
 </body>
-
 </html>

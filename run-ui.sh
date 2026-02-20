@@ -14,4 +14,4 @@ if [ -z "${AGENTCORE_RUNTIME_ARN:-}" ]; then
   echo "Warning: AGENTCORE_RUNTIME_ARN not set. Set it in .env or export it."
 fi
 
-exec uv run uvicorn ui.server:app --reload --host 0.0.0.0 --port 8001
+exec uv run uvicorn ui.server:app --reload --host 0.0.0.0 --port 8080
