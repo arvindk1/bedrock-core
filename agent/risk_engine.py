@@ -10,6 +10,8 @@ Key design decisions:
 - NO global singleton — callers instantiate RiskEngine
 """
 
+import os
+import yaml
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -20,6 +22,20 @@ import numpy as np
 from reason_codes import Rules, format_reason_code, GATE_RISK
 
 logger = logging.getLogger(__name__)
+
+# Load config if available
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
+
+def load_risk_config():
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                config = yaml.safe_load(f)
+                return config.get("risk_limits", {})
+        except Exception as e:
+            logger.error(f"Failed to load user config from {CONFIG_PATH}: {e}")
+    return {}
+
 
 
 # ---------------------------------------------------------------------------
@@ -147,14 +163,16 @@ class RiskEngine:
     def __init__(
         self,
         max_risk_per_trade: float = 1000.0,
-        max_sector_pct: float = 0.25,
-        max_correlation: float = 0.7,
-        drawdown_halt_pct: float = 0.02,
+        max_sector_pct: Optional[float] = None,
+        max_correlation: Optional[float] = None,
+        drawdown_halt_pct: Optional[float] = None,
     ):
+        risk_config = load_risk_config()
+        
         self.max_risk_per_trade = max_risk_per_trade
-        self.max_sector_pct = max_sector_pct
-        self.max_correlation = max_correlation
-        self.drawdown_halt_pct = drawdown_halt_pct
+        self.max_sector_pct = max_sector_pct if max_sector_pct is not None else risk_config.get("max_sector_concentration_pct", 0.25)
+        self.max_correlation = max_correlation if max_correlation is not None else risk_config.get("max_portfolio_correlation", 0.7)
+        self.drawdown_halt_pct = drawdown_halt_pct if drawdown_halt_pct is not None else risk_config.get("drawdown_halt_pct", 0.02)
 
     # ------------------------------------------------------------------
     # Per-Trade Gate
@@ -200,7 +218,7 @@ class RiskEngine:
 
         # 3. Sector concentration check
         sector_rejected, sector_reason = self._check_sector_concentration(
-            trade, portfolio
+            trade, portfolio, market_context
         )
         if sector_rejected:
             return True, sector_reason
@@ -233,6 +251,7 @@ class RiskEngine:
         self,
         trade: Dict[str, Any],
         portfolio: List[Dict[str, Any]],
+        market_context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Check whether adding this trade would breach sector concentration.
@@ -253,10 +272,17 @@ class RiskEngine:
             if self._resolve_sector(pos) == trade_sector:
                 sector_risk += pos_risk
 
-        if total_risk == 0:
+        # If a market context provides the total portfolio value (cash + positions),
+        # use that as the denominator instead of just the sum of risk on existing trades.
+        # This prevents an empty portfolio from viewing a single trade as 100% concentration.
+        portfolio_denominator = total_risk
+        if market_context and "portfolio_value" in market_context:
+            portfolio_denominator = max(total_risk, market_context.get("portfolio_value", 0.0))
+
+        if portfolio_denominator == 0:
             return False, None
 
-        sector_pct = sector_risk / total_risk
+        sector_pct = sector_risk / portfolio_denominator
         if sector_pct > self.max_sector_pct:
             reason = format_reason_code(
                 gate=GATE_RISK,
@@ -264,8 +290,8 @@ class RiskEngine:
                 context={
                     "symbol": trade.get("symbol", "?"),
                     "sector": trade_sector,
-                    "used": sector_risk,
-                    "limit": total_risk * self.max_sector_pct,
+                    "used": round(sector_risk, 2),
+                    "limit": round(portfolio_denominator * self.max_sector_pct, 4),
                     "used_pct": round(sector_pct * 100),
                     "limit_pct": round(self.max_sector_pct * 100),
                 },
