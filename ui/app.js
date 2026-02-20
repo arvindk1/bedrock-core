@@ -428,14 +428,23 @@ function switchRejectionTab(tab) {
         const candidate = rej.candidate || rej;
         const sym = candidate.symbol || rej.symbol || '—';
         const strat = (candidate.strategy || rej.strategy || '—').replace(/_/g, ' ');
-        const rawReason = rej.reason || rej.message || rej.rejection_reason || '—';
-        const reason = formatRejectionReason(rawReason);
+        // Prefer pre-computed display_reason from API; fall back to client-side parser
+        const reason = rej.display_reason || formatRejectionReason(rej.reason || rej.message || rej.rejection_reason || '—');
+        const severity = rej.severity || 'info';
         const score = rej.score !== undefined ? parseFloat(rej.score).toFixed(1) : '—';
+
+        const severityColors = {
+            critical: 'var(--accent-red)',
+            warning: 'var(--accent-amber)',
+            info: 'var(--color-text-muted)',
+        };
+        const reasonColor = severityColors[severity] || 'var(--accent-red)';
+
         return `
                 <tr>
                     <td style="font-weight:700;">${sym}</td>
                     <td class="text-muted">${strat}</td>
-                    <td style="color:var(--accent-danger); font-size:0.78rem;">${reason}</td>
+                    <td style="color:${reasonColor}; font-size:0.78rem;">${reason}</td>
                     <td class="text-mono">${score}</td>
                 </tr>`;
     }).join('')}
