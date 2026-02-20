@@ -1,253 +1,150 @@
-# 🔗 Backend Integration Guide
+# Backend Integration Guide
+
+Document status: Current runtime contract for UI and backend.
+Last reviewed: 2026-02-17.
 
 ## Overview
+The current dashboard is served from `ui/` and integrates with FastAPI endpoints in `ui/server.py`.
 
-The Desk Command dashboard is now fully connected to the backend orchestrator. The frontend sends scan requests to `/api/scan` and receives structured decision logs with picks, rejections, and market context.
+Primary production-like scan path:
+- UI (`ui/app.js`) -> `POST /api/scan`
+- Backend (`ui/server.py`) -> `agent.orchestrator.full_scan_with_orchestration`
+- Response -> gate funnel, picks, rejections, volatility context, decision log summary
 
----
+## Runtime Components
+- Frontend files: `ui/index.html`, `ui/app.js`, `ui/terminal.css`
+- API server: `ui/server.py`
+- Core engines:
+  - `agent/orchestrator.py`
+  - `agent/options_scanner.py`
+  - `agent/risk_engine.py`
+  - `agent/market_checks.py`
+  - `agent/correlation_gate.py`
+  - `agent/event_loader.py`
+  - `agent/vol_engine.py`
 
-## API Endpoint: POST /api/scan
+## Main Endpoint: POST /api/scan
 
 ### Request
-
 ```json
 {
-  "symbol": "NVDA",
+  "symbol": "SPY",
   "start_date": "2026-03-01",
   "end_date": "2026-06-01",
   "top_n": 5,
-  "portfolio_json": "[{\"symbol\": \"QQQ\", \"max_loss\": 500}]",
+  "portfolio_json": "[]",
   "policy_mode": "tight"
 }
 ```
 
-### Response
-
+### Response Shape (Current)
 ```json
 {
-  "regime": "HIGH",
+  "regime": "medium",
   "spyTrend": "Uptrend",
-  "macroRisk": "FOMC in 3 days",
-  "policyMode": "Tight ($1,000)",
+  "macroRisk": "No macro events",
+  "policyMode": "Tight ($1000)",
   "blockingEvents": [],
   "gateFunnel": {
-    "generated": 12,
-    "afterRisk": 9,
-    "afterGatekeeper": 6,
-    "afterCorrelation": 4,
-    "final": 3
+    "generated": 19,
+    "afterEvent": 19,
+    "afterRisk": 0,
+    "afterGatekeeper": 0,
+    "afterCorrelation": 0,
+    "final": 0
   },
-  "picks": [
-    {
-      "rank": 1,
-      "strategy": "Bull Call Debit",
-      "expiration": "Mar 20",
-      "cost": 1.2,
-      "maxLoss": 120,
-      "maxProfit": 380,
-      "score": 84,
-      "legs": [...],
-      "warnings": []
-    }
-  ],
+  "picks": [],
   "rejections": {
-    "risk": ["Max loss $1,500 exceeds limit $1,000", ...],
-    "gatekeeper": ["Leg 1 bid/ask spread too wide", ...],
-    "correlation": ["Correlation 0.78 with AAPL", ...]
+    "risk": [
+      {
+        "candidate": {
+          "symbol": "SPY",
+          "strategy": "BULL_CALL_DEBIT_SPREAD",
+          "expiration": "2026-03-13"
+        },
+        "reason": "RISK_REJECT|rule=SECTOR_CAP|..."
+      }
+    ],
+    "gatekeeper": [],
+    "event": [],
+    "correlation": []
+  },
+  "volatilityContext": {
+    "annual_vol": 0.24,
+    "daily_vol": 0.015,
+    "iv_rank": null,
+    "expected_move_30d": null
   },
   "decisionLog": {
-    "regime": "HIGH",
-    "strategyHint": "CREDIT_SPREAD",
+    "regime": "medium",
+    "strategyHint": "VERTICAL_SPREAD",
     "blockingEvents": "None",
-    "generated": 12,
-    "riskPassed": 9,
-    "gatekeeperPassed": 6,
-    "correlationPassed": 4,
-    "finalPicks": 3,
-    "timestamp": "2026-02-16T14:32:45Z"
+    "generated": 19,
+    "riskPassed": 0,
+    "gatekeeperPassed": 0,
+    "correlationPassed": 0,
+    "finalPicks": 0,
+    "timestamp": "2026-02-17T..."
   }
 }
 ```
 
----
+## Current Data Flow
+1. User submits scan form in `ui/index.html`.
+2. `initiateDiscoveryScan()` in `ui/app.js` calls `POST /api/scan`.
+3. `ui/server.py` parses request and invokes orchestrator.
+4. Orchestrator runs pipeline:
+- Vol + events context
+- Candidate generation
+- Risk gate
+- Gatekeeper scoring
+- Correlation gate
+- Final ranking
+5. API transforms `DecisionLog` to dashboard response contract.
+6. UI updates funnel, picks table, volatility block, and decision audit.
 
-## Data Flow
+## Other Endpoints
 
-```
-Dashboard (React)
-    ↓
-User enters: Symbol, Dates, Portfolio, Policy
-    ↓
-ScanForm component submits to /api/scan
-    ↓
-ui/server.py (FastAPI)
-    ↓
-Calls orchestrator.full_scan_with_orchestration()
-    ↓
-Orchestrator runs pipeline:
-  - EventLoader (blocking events)
-  - VolEngine (regime detection)
-  - OptionsScanner (candidates)
-  - RiskEngine (hard rejections)
-  - ScoredGatekeeper (soft scoring)
-  - CorrelationGate (portfolio overlaps)
-    ↓
-Returns DecisionLog with all metrics
-    ↓
-UIServer transforms DecisionLog → Dashboard response
-    ↓
-Dashboard re-renders with real data
-    ↓
-User sees:
-  - Market context
-  - Gate funnel
-  - Final picks (ranked)
-  - Rejections (categorized)
-  - Decision log (audit trail)
-```
+### POST /api/gatekeeper/check
+- Validates a trade proposal through `ScoredGatekeeper`.
 
----
+### GET /api/market/snapshot/{symbol}
+- Used by live ticker.
+- Mix of live price fetch and static/mock context values.
 
-## Running the Dashboard
+### GET /api/portfolio/risk
+- Currently static/mock response.
 
-### Start the Backend Server
+### GET /api/events/calendar
+- Currently static/mock response.
 
+### POST /api/smart-scan
+- Not a stable path currently. Contract mismatch exists in request model vs handler usage.
+- Treat as non-production until fixed.
+
+## Known Functional Caveats
+1. Default scan calls often return zero picks when `portfolio_json` is empty due current sector-cap behavior in risk gating.
+2. Candidate risk-unit consistency (`max_loss`) needs care (per-share vs contract-dollar semantics).
+3. Earnings data quality may degrade when external parser dependencies/data-provider behavior changes.
+4. Some market data fetch failures can degrade to fallback/mock behavior.
+
+## Local Runbook
+
+### Start backend
 ```bash
 cd /home/arvindk/devl/aws/bedrock-core
-source .venv/bin/activate
-python -m uvicorn ui.server:app --host 0.0.0.0 --port 8001 --reload
+./run-ui.sh
 ```
 
-The server runs on `http://localhost:8001`
+### Open dashboard
+- `http://localhost:8080/`
 
-### Access the Dashboard
-
+### Test API quickly
 ```bash
-# Option 1: Serve static files (development)
-cd ui-aistudio
-python -m http.server 8080
-
-# Then navigate to:
-# http://localhost:8080/index.html
-# (The fetch calls will go to http://localhost:8001/api/scan)
-```
-
-Or:
-
-```bash
-# Option 2: Run with React development server (if using npm)
-npm start
-```
-
----
-
-## How the Dashboard Uses API Data
-
-### 1. User Enters Scan Parameters
-
-```jsx
-<ScanForm onSubmit={handleScan} isLoading={isLoading} />
-```
-
-User fills:
-- Symbol: "NVDA"
-- Start Date: "2026-03-01"
-- End Date: "2026-06-01"
-- Policy: "Tight ($1,000)"
-- Portfolio: Optional JSON
-
-### 2. Dashboard Calls API
-
-```jsx
-const handleScan = async (params) => {
-  const response = await fetch('/api/scan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
-  const data = await response.json();
-  setApiData(data);  // Update dashboard
-};
-```
-
-### 3. Dashboard Renders With Real Data
-
-```jsx
-const displayData = apiData || mockData;
-
-<MarketContext
-  regime={displayData.regime}
-  spyTrend={displayData.spyTrend}
-  macroRisk={displayData.macroRisk}
-  policyMode={displayData.policyMode}
-/>
-
-<GateFunnel
-  generated={displayData.gateFunnel.generated}
-  afterRisk={displayData.gateFunnel.afterRisk}
-  afterGatekeeper={displayData.gateFunnel.afterGatekeeper}
-  afterCorrelation={displayData.gateFunnel.afterCorrelation}
-  final={displayData.gateFunnel.final}
-/>
-```
-
----
-
-## Error Handling
-
-If the API call fails:
-
-```jsx
-{error && (
-  <div style={{ padding: '20px 40px', background: 'rgba(239, 68, 68, 0.1)', ... }}>
-    <p style={{ color: '#EF4444', margin: 0 }}>❌ Error: {error}</p>
-  </div>
-)}
-```
-
-The dashboard shows an error message but doesn't crash — it can retry the scan.
-
----
-
-## Expected DecisionLog Structure
-
-The orchestrator's `DecisionLog` object should have these fields (mapped to dashboard response):
-
-```python
-class DecisionLog:
-    regime: str                           # "HIGH", "MEDIUM", "LOW"
-    spy_trend: str                        # "Uptrend", "Downtrend"
-    macro_risk: str                       # "FOMC in 3 days", "None"
-    total_generated: int                  # Raw candidates scanned
-    after_risk_gate: int                  # Survived risk filtering
-    after_gatekeeper: int                 # Survived liquidity/spreads
-    after_correlation: int                # Survived portfolio overlap
-    final_picks: List[Dict]               # Top N ranked by score
-    risk_rejections: List[str]            # Why trades failed risk gate
-    gatekeeper_rejections: List[str]      # Why trades failed gatekeeper
-    correlation_rejections: List[str]     # Why trades failed correlation
-    blocking_events: List[str]            # FOMC, earnings, etc.
-    strategy_hint: str                    # "CREDIT_SPREAD", "BULL_CALL_DEBIT"
-    timestamp: str                        # ISO format timestamp
-```
-
----
-
-## Testing the Integration Locally
-
-### 1. Start the Backend
-
-```bash
-uvicorn ui.server:app --host 0.0.0.0 --port 8001 --reload
-```
-
-### 2. Make a Test Request
-
-```bash
-curl -X POST http://localhost:8001/api/scan \
+curl -X POST http://localhost:8080/api/scan \
   -H "Content-Type: application/json" \
   -d '{
-    "symbol": "NVDA",
+    "symbol": "SPY",
     "start_date": "2026-03-01",
     "end_date": "2026-06-01",
     "top_n": 5,
@@ -256,91 +153,7 @@ curl -X POST http://localhost:8001/api/scan \
   }'
 ```
 
-### 3. Check the Response
-
-You should get back the full decision log with all gates and picks.
-
-### 4. Open the Dashboard
-
-```bash
-cd ui-aistudio
-python -m http.server 8080
-# Navigate to http://localhost:8080/index.html
-```
-
-### 5. Run a Scan in the Dashboard
-
-- Enter symbol: "NVDA"
-- Select dates and policy
-- Click "🔍 Run Scan"
-- Watch the funnel animate and fill with real data
-
----
-
-## Fallback to Mock Data
-
-If the API is unavailable, the dashboard automatically falls back to mock data:
-
-```jsx
-const displayData = apiData || {
-  regime: 'HIGH',
-  spyTrend: 'Uptrend',
-  // ... etc
-  picks: mockPicks,
-  rejections: mockRejections,
-  decisionLog: mockDecisionLog,
-};
-```
-
-This allows the dashboard UI to be tested/demoed without a running backend.
-
----
-
-## Production Deployment
-
-### Environment Variables
-
-```bash
-# For backend to find agent modules
-export PYTHONPATH=/path/to/bedrock-core:/path/to/bedrock-core/agent
-
-# For API requests (if dashboard is separate server)
-export REACT_APP_API_URL=https://api.deskcommand.example.com
-```
-
-### Docker
-
-The dashboard can be served from FastAPI directly:
-
-```python
-app.mount("/", StaticFiles(directory="ui-aistudio", html=True), name="static")
-```
-
-Or served from a separate static file server (Nginx, S3, CDN).
-
----
-
-## Files Modified
-
-1. **ui-aistudio/dashboard.jsx** — Added `ScanForm` component and API integration
-2. **ui-aistudio/dashboard.css** — Added form styling
-3. **ui-aistudio/USER_WALKTHROUGH.md** — Added user journey documentation
-4. **ui/server.py** — Added `/api/scan` endpoint connecting to orchestrator
-5. **BACKEND_INTEGRATION.md** — This file
-
----
-
-## Next Steps
-
-1. ✅ Dashboard connected to backend
-2. ✅ User walkthrough documented
-3. ⏭️ Deploy to staging
-4. ⏭️ Test with real market data
-5. ⏭️ Monitor performance metrics
-6. ⏭️ Collect user feedback
-7. ⏭️ Deploy to production
-
----
-
-**The Desk Command dashboard is now live and ready to connect to the hedging strategy orchestrator.** 🚀
-
+## Documentation Ownership
+- If `ui/server.py` response fields change, update this file in the same change.
+- If frontend payload shape changes in `ui/app.js`, update request examples here.
+- Keep "Last reviewed" date current.

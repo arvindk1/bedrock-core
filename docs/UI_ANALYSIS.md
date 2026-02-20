@@ -1,7 +1,12 @@
 # UI/UX Analysis: HedgeDesk Console v2.4.0
 
+Status note (2026-02-17):
+- This file is a design-analysis reference, not the runtime contract.
+- Runtime integration source of truth is `BACKEND_INTEGRATION.md`.
+- Current shipped UI is `ui/index.html` + `ui/app.js`; some references below to `ui-aistudio`/React are historical.
+
 ## Overview
-The ui-aistudio folder contains a professional React/TypeScript UI for options trading decision visualization. It demonstrates clean design patterns, type safety, and excellent information architecture that can inspire both the backend system and future UI development.
+This document captures a historical React/TypeScript design direction and reusable UI patterns for options decision visualization. It remains useful as a design reference, but the active runtime UI in this repo is the vanilla implementation under `ui/`.
 
 ---
 

@@ -1,98 +1,140 @@
 # Implementation Plan: "Hedge Fund Grade" Options System
 
-## Goal
-Build a robust, risk-first options trading system. This revision addresses "desk-level" gaps by formalizing metrics, ensuring execution realism, and integrating a full event calendar.
+Document status: Aspirational plan plus current-state alignment snapshot.
+Last reviewed: 2026-02-17.
 
-## Phase 1: The Core Infrastructure (Risk & Data Layers)
+## Purpose
+Build a robust, risk-first options scanning and decisioning system that is realistic enough for desk-style workflows.
 
-### 1. The Risk Engine (`agent/risk_engine.py`)
-**Source:** `dynamic-options-v1/backend/services/risk_concentration_monitor.py`
-**Goal:** Deterministic "No" Machine with precise definitions.
-*   **Metric Definitions**:
-    *   **`MAX_RISK_PER_TRADE`**: Defined as **Max Loss at Entry** (Cost of Debit Spread). For undefined risk (if added later), use **VaR(95)**.
-    *   **`MAX_SECTOR_EXPOSURE`**: Hard cap (e.g., 25%) based on **GICS Sector**.
-    *   **`MAX_CORRELATION`**: Reject trade if **60-day rolling correlation** of daily returns vs. current portfolio > 0.7.
-    *   **Drawdown Limit**: "Circuit Breaker" - halt buying if daily loss > 2%.
+## Vision (Aspirational Goals)
 
-### 2. The Volatility Model (`agent/vol_engine.py`)
-**Source:** `dynamic-options-v1/backend/services/advanced_volatility_calculator.py`
-**Goal:** Standardized Volatility Metrics for reliable signal generation.
-*   **Logic**:
-    *   **Standardized Vol**: Hybrid model (Historical + GARCH + IV).
-    *   **Regime Detection**: Classifies environment as Low/Medium/High Vol.
-    *   **Expected Move**: `calculate_expected_move(symbol, days, confidence=0.68)`.
+### Phase 1: Core Infrastructure (Risk and Data Layers)
+1. Risk engine as a deterministic "No" machine.
+- Max risk per trade based on max loss at entry.
+- Sector concentration hard cap.
+- Correlation guard against concentrated portfolio exposure.
+- Drawdown circuit breaker.
 
-### 3. The Event & Calendar Layer (`agent/event_loader.py`)
-**Source:** `dynamic-options-v1/backend/services/earnings_intelligence.py`
-**Goal:** Context-aware routing.
-*   **Logic**:
-    *   **Earnings Check**: `check_earnings_before_expiry(symbol)` -> hard reject for non-earnings plays.
-    *   **Macro Events**: Manually loaded list (FOMC, CPI) to block execution windows.
+2. Volatility engine with standardized signals.
+- Hybrid volatility model (historical + garch + iv-style signal).
+- Regime detection: low/medium/high.
+- Expected move computation.
 
----
+3. Event and calendar layer.
+- Earnings-aware routing/blocking.
+- Macro event blackout windows.
 
-## Phase 2: The Logic Engines (Gatekeeper & Scanner)
+### Phase 2: Logic Engines (Gatekeeper and Scanner)
+4. Scored gatekeeper.
+- Liquidity viability scoring.
+- Bid/ask spread quality checks.
 
-### 4. The Scored Gatekeeper (`agent/market_checks.py`)
-**Goal:** Score execution viability with realistic checks.
-*   **Liquidity Score (0-100)**:
-    *   **Metric**: `min(Open Interest, NBBO Size * 100)`.
-    *   **Pass**: Can we enter/exit `target_size` without taking > 2% of available liquidity?
-*   **Spread Check**:
-    *   **Pass**: `Ask - Bid < max(0.05, 0.01 * Bid)`.
+5. Policy-based scanner.
+- Regime-driven strategy routing.
+- Candidate generation and ranking by risk-adjusted quality.
 
-### 5. Policy-Based Scanner (`agent/options_scanner.py`)
-**Goal:** Regime-based Strategy Selection.
-*   **Router Logic**:
-    *   **Regime**: Bull Trend + Low Vol (`IV < RV` & `IV Percentile < 20`).
-        *   **Strategy**: **Long Call / Bull Call Spread**.
-    *   **Regime**: Neutral/Bull + High Vol (`IV > RV` & `IV Percentile > 50`).
-        *   **Strategy**: **Bull Put Spread / Iron Condor**.
-    *   **Regime**: Event (Earnings).
-        *   **Strategy**: **Skip** (Default) or Long Straddle (if "Lotto" account).
+### Phase 3: Trade Management
+6. Execution realism model.
+- Slippage assumptions and fill realism.
 
----
+7. Thesis-based exits.
+- Invalidation rules.
+- Time and profit management.
 
-## Phase 3: Trade Management (The "Exit Manager")
+### Phase 4: Feedback and Continuous Improvement
+8. Structured decision loop.
+- Scout, risk, analyst, execution style orchestration.
 
-### 6. Execution Realism (`agent/execution_model.py`)
-**Goal:** Simulate real-world friction.
-*   **Slippage Model**:
-    *   `expected_slippage = max(0.25 * spread, tick_size)`.
-    *   **Spreads**: Pay slippage on **both legs**.
-*   **Fill Probability**:
-    *   **Limit Orders**: Assume fill only if price trades *through* limit.
+9. Statistical feedback loop.
+- Feature store and post-trade learning loop.
 
-### 7. Thesis-Based Exits (`agent/trade_manager.py`)
-**Goal:** Algorithmically defined exits.
-*   **Invalidation Logic**:
-    *   **Technical**: Close below **Anchored VWAP** (from Swing Low) or **2x ATR(14)** trailing stop.
-*   **Profit Taking**:
-    *   **Scale Out**: Sell 50% at **Expected Move (1 Standard Deviation)**.
-*   **Time Stop**:
-    *   "If `days_held > 0.5 * DTE` and `profit < 0`: **Exit**."
+## Current State Snapshot (As of 2026-02-17)
 
----
+### What is accomplished
+1. Phase 1 modules exist and run.
+- `agent/risk_engine.py`
+- `agent/vol_engine.py`
+- `agent/event_loader.py`
 
-## Phase 4: Architecture & Feedback (V3)
+2. Phase 2 core pipeline exists and runs through `/api/scan`.
+- `agent/orchestrator.py`
+- `agent/options_scanner.py`
+- `agent/market_checks.py`
+- `agent/correlation_gate.py`
+- `ui/server.py` (`POST /api/scan`)
 
-### Agent Logic (ReAct Loop)
-1.  **Orchestrator**: "Bullish Tech. Max Risk $1,000. Regimes: Vol=Low, Trend=Up."
-2.  **Scout**: "NVDA and AMD fit. Both passed Liquidity checks."
-3.  **Risk Manager**: "NVDA sector exposure OK. Correlation check passed."
-4.  **Analyst**: "Grouping as 'Semis Bull'. Structuring Debit Spreads."
-5.  **Execution**: "Simulating Limit Buy @ Mid + Slippage."
+3. Tests are in strong shape for the implemented surface.
+- In venv: `194 passed`.
 
-### The "Statistical" Feedback Loop
-*   **Feature Store**: At entry, record `[IV_Rank, IV_vs_RV, Spy_Trend_Score, Sector_RS]`.
-*   **Analysis**:
-    *   **Shapley Values**: "Higher IV_vs_RV was the #1 predictor of loss for Long Calls."
-    *   **Optimization**: "Rule Change: Reject Long Calls if IV_vs_RV > 10%."
+4. UI-to-backend integration for main flow is present.
+- `ui/index.html` + `ui/app.js` call `/api/scan` and render funnel, picks, rejections, and audit panel.
 
-## Verification Plan
-*   **Backtest (Robustness)**:
-    *   **Window**: 3 Years (covering Low Vol -> High Vol -> Rate Hike regimes).
-    *   **Method**: Walk-Forward Analysis (Train on Y1, Test on Y2).
-*   **Paper Trade**:
-    *   Live shadow trading with **Slippage Model** applied.
-    *   "Rejected Trade" Audit Log: daily review of false positives.
+### What is only partially achieved
+1. Scanner strategy routing is partial.
+- Current scanner is heavily skewed to bullish call debit spread generation.
+- High-vol regime routing to bull put / iron condor is not fully implemented.
+
+2. Event blocking behavior is partial.
+- Macro events route into policy, but earnings integration has field mismatch risk between event payload and policy evaluation.
+
+3. Risk semantics are partially misaligned.
+- Candidate `max_loss` unit handling is inconsistent (per-share vs contract-dollar risk).
+
+4. Data realism is mixed.
+- Live market data is used where available.
+- Some fetch paths fail open to mock data, which can produce misleading results under outages.
+
+### What is missing
+1. Phase 3 modules are not implemented in this repo.
+- `agent/execution_model.py` does not exist.
+- `agent/trade_manager.py` does not exist.
+
+2. Phase 4 feedback loop is not implemented in this repo.
+- No feature store.
+- No shapley-based optimization loop.
+
+## Alignment Matrix (Vision vs Current)
+
+| Capability | Vision Target | Current State | Alignment |
+| --- | --- | --- | --- |
+| Risk engine | Deterministic hard risk gates | Implemented, but sector-cap behavior and risk units need correction | Partial |
+| Vol engine | Hybrid vol + regime + expected move | Implemented and integrated | Strong |
+| Event layer | Earnings + macro hard routing | Implemented, but earnings policy edge cases remain | Partial |
+| Gatekeeper | Liquidity + spread quality checks | Implemented and integrated | Strong |
+| Strategy router | Regime-based multi-strategy routing | Implemented at high level, limited strategy realization | Partial |
+| Orchestration pipeline | Events -> vol -> scan -> risk -> gatekeeper -> correlation | Implemented and running via `/api/scan` | Strong |
+| Execution realism | Slippage/fill model | Not implemented | Missing |
+| Thesis-based exits | Technical invalidation + time/profit logic | Not implemented | Missing |
+| Statistical feedback loop | Post-trade learning and rule optimization | Not implemented | Missing |
+
+## Execution Quality Assessment
+
+### Works reliably today
+1. Main orchestrated scan endpoint exists and returns structured data.
+2. Gate sequencing and decision logging are wired.
+3. Test coverage for current modules is substantial.
+
+### Fragile or misleading scenarios
+1. Empty/default portfolio flow can eliminate all candidates via sector concentration logic.
+2. Risk-dollar units are inconsistent in candidate payloads.
+3. Provider outages or parser dependency gaps can degrade output quality silently.
+
+### Broken or out-of-sync surfaces
+1. `/api/smart-scan` contract is currently broken.
+2. Some docs referenced old `ui-aistudio`/react flow that no longer matches current `ui/` implementation.
+
+## Doc Sync Policy
+
+1. This file is the authoritative "vision + alignment" document.
+2. `BACKEND_INTEGRATION.md` is the authoritative API and runtime integration contract.
+3. `docs/UI_ANALYSIS.md` is design analysis/reference, not source-of-truth runtime contract.
+4. Every backend behavior change touching endpoints, payload schema, or gating logic must update docs in the same PR.
+5. Each updated doc must include a "Last reviewed" date.
+
+## Near-Term Priorities to Improve Alignment
+
+1. Correct risk-unit consistency (`max_loss` in contract dollars end-to-end).
+2. Fix earnings policy field mapping for hard/warn/tight event handling.
+3. Stabilize default scan behavior so empty-portfolio scans are still meaningful.
+4. Repair or remove `/api/smart-scan` until its contract is valid.
+5. Keep docs current after each functional change.
