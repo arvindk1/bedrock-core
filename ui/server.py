@@ -28,8 +28,9 @@ from agent.event_loader import EventLoader
 
 # --- Database Integration ---
 from db import SessionLocal, init_db
-from db.models import Position
+from db.models import Position, Portfolio, DecisionAudit
 from db.seed import seed
+from agent.risk_engine import SECTOR_MAP
 
 vol_engine = VolEngine()
 event_loader = EventLoader()
@@ -198,6 +199,29 @@ class ScanRequest(BaseModel):
     @classmethod
     def symbol_upper(cls, v):
         return v.strip().upper()
+
+
+class TradeExecuteRequest(BaseModel):
+    """Request body for POST /api/trade/execute."""
+    symbol: str
+    strategy: str              # e.g. "BULL_CALL_SPREAD"
+    expiration_date: str       # ISO date string e.g. "2026-03-21"
+    quantity: int = 1
+    cost_basis: float          # total debit paid or credit received per contract
+    max_profit: float
+    max_loss: float
+    is_credit: bool = False
+    delta: Optional[float] = None
+    gamma: Optional[float] = None
+    theta: Optional[float] = None
+    vega: Optional[float] = None
+    sector: Optional[str] = None
+
+    @field_validator("symbol")
+    @classmethod
+    def symbol_upper(cls, v):
+        return v.strip().upper()
+
 
 # --- API Endpoints ---
 
@@ -682,6 +706,111 @@ async def get_config():
             "aggressive": APP_CONFIG["policy_limits"]["aggressive"],
         },
     }
+
+
+@app.post("/api/trade/execute")
+def trade_execute(req: TradeExecuteRequest):
+    """
+    Execute a paper trade: re-validate through gatekeeper, then save to DB.
+
+    1. Re-run gatekeeper check on the proposed trade.
+    2. If rejected, return 422 with rejection details.
+    3. Load (or seed) the default portfolio.
+    4. Save a new Position record to the DB.
+    5. Save a DecisionAudit record.
+    6. Return the executed position details.
+    """
+    logger.info(f"Trade execute request: {req.symbol} {req.strategy}")
+
+    # 1. Re-run gatekeeper check
+    proposal = {
+        "symbol": req.symbol,
+        "strategy_type": req.strategy,
+        "expiration_date": req.expiration_date,
+        "max_loss": req.max_loss,
+        "quantity": req.quantity,
+    }
+    score_card = gatekeeper.check_trade(proposal)
+
+    if not score_card.is_approved:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "approved": False,
+                "reason": score_card.rejection_reason,
+                "score": score_card.total_score,
+            },
+        )
+
+    db = SessionLocal()
+    try:
+        # 2. Load the default portfolio; seed if none exists
+        portfolio = db.query(Portfolio).first()
+        if portfolio is None:
+            db.close()
+            seed()
+            db = SessionLocal()
+            portfolio = db.query(Portfolio).first()
+
+        # 3. Resolve sector — use request value or fall back to SECTOR_MAP
+        sector = req.sector if req.sector is not None else SECTOR_MAP.get(req.symbol, "Unknown")
+
+        # 4. Save the position
+        position = Position(
+            portfolio_id=portfolio.id,
+            symbol=req.symbol,
+            strategy=req.strategy,
+            quantity=req.quantity,
+            cost_basis=req.cost_basis,
+            max_profit=req.max_profit,
+            max_loss=req.max_loss,
+            is_credit=req.is_credit,
+            delta=req.delta,
+            gamma=req.gamma,
+            theta=req.theta,
+            vega=req.vega,
+            sector=sector,
+            expiration_date=req.expiration_date,
+            days_held=0,
+            status="open",
+        )
+        db.add(position)
+        db.flush()  # populate position.id before audit
+
+        # 5. Save a DecisionAudit record
+        audit = DecisionAudit(
+            symbol=req.symbol,
+            portfolio_id=portfolio.id,
+            policy_mode="manual",
+            picks_count=1,
+            decision_log_json=json.dumps({
+                "action": "manual_execute",
+                "gatekeeper_score": score_card.total_score,
+            }),
+        )
+        db.add(audit)
+        db.commit()
+        db.refresh(position)
+
+        # 6. Return success
+        return JSONResponse({
+            "status": "executed",
+            "position_id": position.id,
+            "symbol": position.symbol,
+            "strategy": position.strategy,
+            "gatekeeper_score": score_card.total_score,
+            "message": f"Position opened: {position.symbol} {position.strategy} x{position.quantity}",
+        })
+
+    except Exception as e:
+        logger.error(f"Trade execute DB error: {e}", exc_info=True)
+        db.rollback()
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)},
+        )
+    finally:
+        db.close()
 
 
 # --- DB Startup: ensure tables exist and seed demo data ---
