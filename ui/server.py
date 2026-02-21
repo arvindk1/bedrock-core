@@ -531,41 +531,45 @@ def get_event_calendar():
     Used by event calendar and dashboard blocking event display.
     """
     try:
-        # Mock implementation - returns static event calendar
-        # In production, integrate with EventLoader
-        return JSONResponse({
-            "earnings": {
-                "AAPL": {
-                    "days_until": 15,
-                    "date": "2026-03-01",
-                },
-                "MSFT": {
-                    "days_until": 22,
-                    "date": "2026-03-08",
-                },
-                "NVDA": {
-                    "days_until": 8,
-                    "date": "2026-02-24",
-                },
-            },
-            "macro": [
-                {
-                    "name": "FOMC Meeting",
-                    "date": "2026-03-15",
-                    "days_until": 28,
-                    "impact": "high"
-                },
-                {
-                    "name": "CPI Release",
-                    "date": "2026-03-10",
-                    "days_until": 23,
-                    "impact": "high"
-                },
-            ]
-        })
+        from datetime import date, timedelta
+
+        # --- macro events from EventLoader ---
+        today = date.today()
+        macro = []
+        for evt in event_loader.macro_events:
+            days_until = (evt["date"] - today).days
+            if days_until >= 0:
+                macro.append({
+                    "name": evt["name"],
+                    "date": evt["date"].isoformat(),
+                    "days_until": days_until,
+                    "impact": evt.get("impact", "high"),
+                })
+        macro.sort(key=lambda e: e["days_until"])
+
+        # --- earnings for default watchlist ---
+        watchlist = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"]
+        earnings = {}
+        for symbol in watchlist:
+            try:
+                events = event_loader.get_blocking_events(symbol, days_to_expiry=90)
+                for evt in events:
+                    if evt.get("type") == "earnings":
+                        days_until = evt["earnings_days"]
+                        earnings_date = (today + timedelta(days=days_until)).isoformat()
+                        earnings[symbol] = {
+                            "days_until": days_until,
+                            "date": earnings_date,
+                        }
+                        break
+            except Exception as sym_err:
+                logger.warning(f"Could not fetch earnings for {symbol}: {sym_err}")
+
+        return JSONResponse({"earnings": earnings, "macro": macro})
+
     except Exception as e:
         logger.error(f"Event calendar error: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"earnings": {}, "macro": []})
 
 @app.get("/api/config")
 async def get_config():

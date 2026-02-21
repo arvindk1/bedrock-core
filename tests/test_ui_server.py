@@ -171,3 +171,59 @@ class TestMarketSnapshot:
         assert data["change_pct"] is not None
         # (210 - 200) / 200 * 100 = 5.0
         assert abs(data["change_pct"] - 5.0) < 0.01
+
+
+class TestEventCalendar:
+    """Tests for GET /api/events/calendar."""
+
+    def test_event_calendar_macro_from_event_loader(self, client):
+        """macro_events from EventLoader appear in the calendar response."""
+        from datetime import date, timedelta
+
+        future_date = date.today() + timedelta(days=20)
+        mock_macro_events = [
+            {"name": "FOMC Meeting", "date": future_date, "impact": "high"},
+        ]
+
+        with patch("ui.server.event_loader.macro_events", mock_macro_events):
+            resp = client.get("/api/events/calendar")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "macro" in data
+        macro_names = [evt["name"] for evt in data["macro"]]
+        assert "FOMC Meeting" in macro_names
+        fomc = next(e for e in data["macro"] if e["name"] == "FOMC Meeting")
+        assert fomc["days_until"] == 20
+        assert fomc["date"] == future_date.isoformat()
+        assert fomc["impact"] == "high"
+
+    def test_event_calendar_earnings_from_event_loader(self, client):
+        """Earnings events from get_blocking_events appear in calendar response."""
+        from datetime import date, timedelta
+
+        earnings_days = 14
+        mock_earnings_event = {
+            "type": "earnings",
+            "earnings_days": earnings_days,
+            "affects_trade": True,
+            "warning": "Earnings event occurs before expiration.",
+            "reason_code": "EVENT_BLOCK|EARNINGS|AAPL|14",
+        }
+
+        def mock_get_blocking(symbol, days_to_expiry):
+            if symbol == "AAPL":
+                return [mock_earnings_event]
+            return []
+
+        with patch("ui.server.event_loader.get_blocking_events", side_effect=mock_get_blocking):
+            resp = client.get("/api/events/calendar")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "earnings" in data
+        assert "AAPL" in data["earnings"]
+        aapl = data["earnings"]["AAPL"]
+        assert aapl["days_until"] == earnings_days
+        expected_date = (date.today() + timedelta(days=earnings_days)).isoformat()
+        assert aapl["date"] == expected_date
