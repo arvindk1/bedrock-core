@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 import boto3
+import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,67 @@ from agent.market_data import market_data
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("UIServer")
+
+
+# ============================================================================
+# App Config (config.yaml)
+# ============================================================================
+
+def _load_app_config() -> Dict[str, Any]:
+    """
+    Load config.yaml from the repo root at server startup.
+    Returns a safe default dict if the file is missing or unreadable.
+    """
+    _defaults: Dict[str, Any] = {
+        "account": {
+            "total_cash_balance": 100000.0,
+        },
+        "risk_limits": {
+            "max_sector_concentration_pct": 0.25,
+            "max_portfolio_correlation": 0.70,
+            "drawdown_halt_pct": 0.02,
+        },
+        "policy_limits": {
+            "tight": 1000,
+            "moderate": 2000,
+            "aggressive": 5000,
+        },
+    }
+
+    # config.yaml lives at the repo root, one level above ui/
+    config_path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+    config_path = os.path.abspath(config_path)
+
+    if not os.path.exists(config_path):
+        logger.warning(f"config.yaml not found at {config_path}; using defaults")
+        return _defaults
+
+    try:
+        with open(config_path, "r") as fh:
+            loaded = yaml.safe_load(fh) or {}
+
+        # Merge loaded values on top of defaults (shallow per top-level key)
+        result = dict(_defaults)
+        for key, default_value in _defaults.items():
+            if key in loaded:
+                if isinstance(default_value, dict):
+                    merged = dict(default_value)
+                    merged.update(loaded[key])
+                    result[key] = merged
+                else:
+                    result[key] = loaded[key]
+
+        logger.info(f"Loaded config.yaml from {config_path}")
+        return result
+
+    except Exception as exc:
+        logger.error(f"Failed to load config.yaml: {exc}; using defaults")
+        return _defaults
+
+
+# Module-level config cache — loaded once at import time
+APP_CONFIG: Dict[str, Any] = _load_app_config()
+
 
 app = FastAPI(title="Hedge Fund Options Desk")
 
@@ -199,8 +261,8 @@ def scan(req: ScanRequest):
         # Extract decision log data
         log_dict = decision_log.to_dict() if hasattr(decision_log, 'to_dict') else {}
 
-        # Map policy mode to dollar amount
-        policy_amounts = {'tight': 1000, 'moderate': 2000, 'aggressive': 5000}
+        # Map policy mode to dollar amount (sourced from config.yaml via APP_CONFIG)
+        policy_amounts = APP_CONFIG["policy_limits"]
         policy_amount = policy_amounts.get(req.policy_mode, 1000)
 
         # Enrich rejections with display_reason + severity
@@ -442,6 +504,29 @@ def get_event_calendar():
     except Exception as e:
         logger.error(f"Event calendar error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/config")
+def get_config():
+    """
+    Returns the current app configuration sourced from config.yaml.
+    Exposes account balance, risk limits, and policy limits to the UI.
+    """
+    return {
+        "account": {
+            "total_cash_balance": APP_CONFIG["account"]["total_cash_balance"],
+        },
+        "risk_limits": {
+            "max_sector_concentration_pct": APP_CONFIG["risk_limits"]["max_sector_concentration_pct"],
+            "max_portfolio_correlation": APP_CONFIG["risk_limits"]["max_portfolio_correlation"],
+            "drawdown_halt_pct": APP_CONFIG["risk_limits"]["drawdown_halt_pct"],
+        },
+        "policy_limits": {
+            "tight": APP_CONFIG["policy_limits"]["tight"],
+            "moderate": APP_CONFIG["policy_limits"]["moderate"],
+            "aggressive": APP_CONFIG["policy_limits"]["aggressive"],
+        },
+    }
+
 
 # --- Legacy/Agent Endpoint (Optional) ---
 def invoke_agent(prompt: str) -> dict:

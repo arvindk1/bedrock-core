@@ -53,6 +53,27 @@ class TestScanEndpoint:
         assert "final" in funnel
 
 
+class TestConfigEndpoint:
+    """Tests for GET /api/config."""
+
+    def test_config_endpoint_returns_account_balance(self, client):
+        """GET /api/config -> 200, account.total_cash_balance present and > 0."""
+        resp = client.get("/api/config")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "account" in data
+        assert "total_cash_balance" in data["account"]
+        assert data["account"]["total_cash_balance"] > 0
+
+    def test_config_endpoint_returns_policy_limits(self, client):
+        """GET /api/config -> policy_limits.tight == 1000."""
+        resp = client.get("/api/config")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "policy_limits" in data
+        assert data["policy_limits"]["tight"] == 1000
+
+
 class TestStaticFiles:
     """Tests for static file serving."""
 

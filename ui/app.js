@@ -20,6 +20,7 @@ const appState = {
     lastScanResult: null,
     currentPortfolio: [],
     tickers: {},
+    accountBalance: null,
 };
 
 // ============================================================================
@@ -1050,11 +1051,41 @@ function generateCorrelationMatrix() {
 }
 
 // ============================================================================
+// APP CONFIG
+// ============================================================================
+
+async function loadAppConfig() {
+    try {
+        const response = await fetch(`${API_BASE}/api/config`);
+        const data = await response.json();
+
+        if (data.account && data.account.total_cash_balance != null) {
+            appState.accountBalance = data.account.total_cash_balance;
+            updateAccountBalanceDisplay(appState.accountBalance);
+        }
+    } catch (err) {
+        console.error('Failed to load app config:', err);
+    }
+}
+
+function formatAccountBalance(value) {
+    return '$' + Math.round(value).toLocaleString('en-US');
+}
+
+function updateAccountBalanceDisplay(balance) {
+    const el = document.getElementById('acct-balance');
+    if (el) {
+        el.textContent = formatAccountBalance(balance);
+    }
+}
+
+// ============================================================================
 // INITIAL DATA LOADING
 // ============================================================================
 
 function loadInitialData() {
     console.log('📊 Loading initial data...');
+    loadAppConfig();
     loadPortfolioRisk();
     generateCorrelationMatrix();
     updateTicker();

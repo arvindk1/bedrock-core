@@ -3,5 +3,10 @@ account:
 
 risk_limits:
   max_sector_concentration_pct: 0.25  # 25% max in one sector
-  max_portfolio_correlation: 0.70     # 0.7 max correlation 
+  max_portfolio_correlation: 0.70     # 0.7 max correlation
   drawdown_halt_pct: 0.02             # Halt trading if daily loss > 2% of total_cash_balance
+
+policy_limits:
+  tight: 1000       # Max risk per trade in tight mode
+  moderate: 2000    # Max risk per trade in moderate mode
+  aggressive: 5000  # Max risk per trade in aggressive mode
