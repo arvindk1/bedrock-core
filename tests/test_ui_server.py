@@ -66,12 +66,16 @@ class TestConfigEndpoint:
         assert data["account"]["total_cash_balance"] > 0
 
     def test_config_endpoint_returns_policy_limits(self, client):
-        """GET /api/config -> policy_limits.tight == 1000."""
+        """GET /api/config -> policy_limits keys are present and positive numbers."""
         resp = client.get("/api/config")
         assert resp.status_code == 200
         data = resp.json()
         assert "policy_limits" in data
-        assert data["policy_limits"]["tight"] == 1000
+        assert "tight" in data["policy_limits"]
+        assert "moderate" in data["policy_limits"]
+        assert "aggressive" in data["policy_limits"]
+        assert isinstance(data["policy_limits"]["tight"], (int, float))
+        assert data["policy_limits"]["tight"] > 0
 
 
 class TestStaticFiles:

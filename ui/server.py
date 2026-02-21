@@ -264,7 +264,7 @@ def scan(req: ScanRequest):
 
         # Map policy mode to dollar amount (sourced from config.yaml via APP_CONFIG)
         policy_amounts = APP_CONFIG["policy_limits"]
-        policy_amount = policy_amounts.get(req.policy_mode, 1000)
+        policy_amount = policy_amounts.get(req.policy_mode, APP_CONFIG["policy_limits"]["tight"])
 
         # Enrich rejections with display_reason + severity
         risk_rejs_enriched = _enrich_rejections(log_dict.get("risk_rejections", []))
@@ -507,7 +507,7 @@ def get_event_calendar():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/config")
-def get_config():
+async def get_config():
     """
     Returns the current app configuration sourced from config.yaml.
     Exposes account balance, risk limits, and policy limits to the UI.

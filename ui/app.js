@@ -1057,6 +1057,10 @@ function generateCorrelationMatrix() {
 async function loadAppConfig() {
     try {
         const response = await fetch(`${API_BASE}/api/config`);
+        if (!response.ok) {
+            console.error('Config fetch failed:', response.status);
+            return;
+        }
         const data = await response.json();
 
         if (data.account && data.account.total_cash_balance != null) {

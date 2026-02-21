@@ -646,7 +646,7 @@ def full_scan_with_orchestration(
         start_date, end_date: Expiration window (YYYY-MM-DD)
         top_n: Return top N contracts
         portfolio: List of current positions for risk/correlation checks
-        policy_mode: "tight" (1K), "moderate" (2K), or "aggressive" (5K) max risk per trade
+        policy_mode: "tight" | "moderate" | "aggressive" — max risk per trade (see config.yaml policy_limits)
 
     Returns:
         DecisionLog with: regime, blocking_events, candidates at each gate, final_picks, rejections
