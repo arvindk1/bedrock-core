@@ -142,3 +142,32 @@ class TestMarketSnapshot:
         assert resp.status_code == 200
         data = resp.json()
         assert "relative_strength" not in data
+
+    def test_market_snapshot_change_pct_computed(self, client):
+        """change_pct should be computed from yfinance 2-day history."""
+        import pandas as pd
+        from unittest.mock import patch, MagicMock
+
+        # Build a 2-row DataFrame mimicking yf.Ticker.history(period="2d")
+        mock_history = pd.DataFrame(
+            {"Close": [200.0, 210.0]},
+            index=pd.date_range("2026-02-19", periods=2)
+        )
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = mock_history
+
+        with patch("ui.server.yf.Ticker", return_value=mock_ticker), \
+             patch("ui.server.market_data.get_current_price", return_value=210.0), \
+             patch("ui.server.market_data.get_liquidity_metrics", side_effect=Exception("skip")), \
+             patch("ui.server.vol_engine.detect_regime", side_effect=Exception("skip")), \
+             patch("ui.server.vol_engine.calculate_volatility", side_effect=Exception("skip")), \
+             patch("ui.server.vol_engine.calculate_iv_rank", side_effect=Exception("skip")), \
+             patch("ui.server.vol_engine.calculate_expected_move", side_effect=Exception("skip")), \
+             patch("ui.server.event_loader.get_blocking_events", return_value=[]):
+            resp = client.get("/api/market/snapshot/AAPL")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["change_pct"] is not None
+        # (210 - 200) / 200 * 100 = 5.0
+        assert abs(data["change_pct"] - 5.0) < 0.01

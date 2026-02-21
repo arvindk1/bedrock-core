@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Any
 
 import boto3
 import yaml
+import yfinance as yf
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -438,7 +439,6 @@ def get_market_snapshot(symbol: str):
         # --- change_pct: derive from liquidity info or yfinance history ---
         change_pct = None
         try:
-            import yfinance as yf
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period="2d")
             if hist is not None and len(hist) >= 2:
