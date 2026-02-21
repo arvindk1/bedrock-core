@@ -256,6 +256,7 @@ def scan(req: ScanRequest):
             top_n=req.top_n,
             portfolio=portfolio,
             policy_mode=req.policy_mode,
+            portfolio_value=APP_CONFIG["account"]["total_cash_balance"],
         )
 
         # Extract decision log data

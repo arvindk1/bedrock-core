@@ -627,6 +627,7 @@ def full_scan_with_orchestration(
     top_n: int = 5,
     portfolio: Optional[List[Dict[str, Any]]] = None,
     policy_mode: str = "tight",
+    portfolio_value: float = 100000.0,
 ) -> DecisionLog:
     """
     Full Phase 2 orchestration: "Desk Flow" for options discovery.
@@ -703,19 +704,6 @@ def full_scan_with_orchestration(
         # TASK 1: Apply Risk Gate
         # ====================================================================
         from risk_engine import RiskEngine
-        import os
-        import yaml
-        
-        # Load risk config to get total account value
-        risk_config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
-        total_account_value = 100000.0 # Default if no config
-        if os.path.exists(risk_config_file):
-            try:
-                with open(risk_config_file, "r") as f:
-                    config_data = yaml.safe_load(f)
-                    total_account_value = config_data.get("account", {}).get("total_cash_balance", 100000.0)
-            except Exception:
-                pass
 
         # TIGHT (±1 day): no new trades
         if event_policy == "TIGHT":
@@ -738,7 +726,7 @@ def full_scan_with_orchestration(
             }
 
             # Pass the total account value into the market_context so the drawdown engine can use it
-            market_context = {"portfolio_value": total_account_value, "daily_pnl": 0.0}
+            market_context = {"portfolio_value": portfolio_value, "daily_pnl": 0.0}
 
             rejected, reason = risk_engine.should_reject_trade(
                 trade_proposal,
