@@ -26,6 +26,11 @@ from agent.market_data import market_data
 from agent.vol_engine import VolEngine
 from agent.event_loader import EventLoader
 
+# --- Database Integration ---
+from db import SessionLocal, init_db
+from db.models import Position
+from db.seed import seed
+
 vol_engine = VolEngine()
 event_loader = EventLoader()
 
@@ -371,58 +376,145 @@ async def gatekeeper_check(req: GatekeeperRequest):
 @app.get("/api/portfolio/risk")
 def get_portfolio_risk():
     """
-    Returns aggregate portfolio risk metrics using RiskEngine.
+    Returns aggregate portfolio risk metrics computed from live DB positions.
     Used by Portfolio & Risk view.
     """
+    db = SessionLocal()
     try:
-        # TODO: Get current portfolio from session or database
-        portfolio = []
+        positions = db.query(Position).filter(Position.status == "open").all()
 
-        # Mock implementation - returns static risk metrics
-        # In production, calculate using RiskEngine and actual portfolio
-        return JSONResponse({
-            "total_capital_at_risk": 4200,
-            "max_risk_per_trade": 1000,
-            "daily_drawdown": -150.0,
-            "net_delta": 142,
-            "sector_exposure": [
-                {
-                    "name": "Technology",
-                    "value": 0.45,
-                    "limit": 0.25,
-                    "status": "critical",
-                },
-                {
-                    "name": "Finance",
-                    "value": 0.25,
-                    "limit": 0.25,
-                    "status": "normal",
-                },
-                {
-                    "name": "Healthcare",
-                    "value": 0.15,
-                    "limit": 0.25,
-                    "status": "normal",
-                },
-                {
-                    "name": "Energy",
-                    "value": 0.15,
-                    "limit": 0.25,
-                    "status": "normal",
-                },
-            ],
-            "alerts": [
-                {
+        # Auto-seed if DB has no portfolio yet
+        if not positions:
+            db.close()
+            seed()
+            db = SessionLocal()
+            positions = db.query(Position).filter(Position.status == "open").all()
+
+        # --- Compute total_capital_at_risk ---
+        total_capital_at_risk = sum(
+            abs(p.cost_basis * p.quantity) for p in positions
+        )
+
+        # --- Compute net_delta (per share * 100 shares per contract) ---
+        net_delta = sum(
+            (p.delta or 0.0) * p.quantity * 100 for p in positions
+        )
+
+        # --- Compute daily_drawdown ---
+        daily_drawdown = sum(
+            (p.unrealized_pnl or 0.0) for p in positions
+        )
+
+        # --- Compute sector_exposure ---
+        sector_risk: dict = {}
+        for p in positions:
+            sector = p.sector or "Unknown"
+            sector_risk[sector] = sector_risk.get(sector, 0.0) + abs(p.cost_basis * p.quantity)
+
+        concentration_limit = APP_CONFIG["risk_limits"]["max_sector_concentration_pct"]
+
+        sector_exposure = []
+        alerts = []
+
+        for sector, risk in sorted(sector_risk.items()):
+            value = risk / total_capital_at_risk if total_capital_at_risk > 0 else 0.0
+            status = "critical" if value > concentration_limit else "normal"
+            sector_exposure.append({
+                "name": sector,
+                "value": round(value, 4),
+                "limit": concentration_limit,
+                "status": status,
+            })
+            if status == "critical":
+                alerts.append({
                     "type": "concentration",
                     "severity": "critical",
-                    "message": "Technology sector at 45% exceeds limit of 25%",
-                    "recommendation": "Consider reducing tech exposure or closing positions",
-                }
-            ]
+                    "message": (
+                        f"{sector} sector at {value * 100:.0f}% exceeds limit of "
+                        f"{concentration_limit * 100:.0f}%"
+                    ),
+                    "recommendation": "Consider reducing exposure",
+                })
+
+        # --- Drawdown circuit-breaker alert ---
+        total_cash = APP_CONFIG["account"]["total_cash_balance"]
+        drawdown_halt_pct = APP_CONFIG["risk_limits"]["drawdown_halt_pct"]
+        if abs(daily_drawdown) > drawdown_halt_pct * total_cash and daily_drawdown < 0:
+            alerts.append({
+                "type": "drawdown",
+                "severity": "critical",
+                "message": (
+                    f"Daily drawdown ${abs(daily_drawdown):.0f} exceeds halt threshold of "
+                    f"{drawdown_halt_pct * 100:.1f}% (${drawdown_halt_pct * total_cash:.0f})"
+                ),
+                "recommendation": "Consider halting new trades for the day",
+            })
+
+        # --- max_risk_per_trade from config ---
+        max_risk_per_trade = APP_CONFIG["policy_limits"]["tight"]
+
+        return JSONResponse({
+            "total_capital_at_risk": round(total_capital_at_risk, 2),
+            "max_risk_per_trade": max_risk_per_trade,
+            "daily_drawdown": round(daily_drawdown, 2),
+            "net_delta": round(net_delta, 2),
+            "sector_exposure": sector_exposure,
+            "alerts": alerts,
         })
+
     except Exception as e:
-        logger.error(f"Portfolio risk error: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error(f"Portfolio risk error: {e}", exc_info=True)
+        return JSONResponse({"error": "portfolio data unavailable"}, status_code=500)
+    finally:
+        db.close()
+
+
+@app.get("/api/portfolio/positions")
+def get_portfolio_positions():
+    """
+    Returns all open positions from the DB for the positions table in the UI.
+    """
+    db = SessionLocal()
+    try:
+        positions = db.query(Position).filter(Position.status == "open").all()
+
+        # Auto-seed if DB has no open positions
+        if not positions:
+            db.close()
+            seed()
+            db = SessionLocal()
+            positions = db.query(Position).filter(Position.status == "open").all()
+
+        result = []
+        for p in positions:
+            result.append({
+                "id": p.id,
+                "symbol": p.symbol,
+                "strategy": p.strategy,
+                "quantity": p.quantity,
+                "cost_basis": round(float(p.cost_basis), 2) if p.cost_basis is not None else None,
+                "current_mark": round(float(p.current_mark), 2) if p.current_mark is not None else None,
+                "unrealized_pnl": round(float(p.unrealized_pnl), 2) if p.unrealized_pnl is not None else None,
+                "max_profit": round(float(p.max_profit), 2) if p.max_profit is not None else None,
+                "max_loss": round(float(p.max_loss), 2) if p.max_loss is not None else None,
+                "delta": p.delta,
+                "gamma": p.gamma,
+                "theta": p.theta,
+                "vega": p.vega,
+                "sector": p.sector,
+                "is_credit": p.is_credit,
+                "expiration_date": p.expiration_date,
+                "days_held": p.days_held,
+                "status": p.status,
+            })
+
+        return JSONResponse(result)
+
+    except Exception as e:
+        logger.error(f"Portfolio positions error: {e}", exc_info=True)
+        return JSONResponse({"error": "portfolio data unavailable"}, status_code=500)
+    finally:
+        db.close()
 
 @app.get("/api/market/snapshot/{symbol}")
 def get_market_snapshot(symbol: str):
@@ -590,6 +682,14 @@ async def get_config():
             "aggressive": APP_CONFIG["policy_limits"]["aggressive"],
         },
     }
+
+
+# --- DB Startup: ensure tables exist and seed demo data ---
+try:
+    init_db()
+    seed()
+except Exception as _db_init_err:
+    logger.warning(f"DB startup init/seed skipped: {_db_init_err}")
 
 
 # --- Legacy/Agent Endpoint (Optional) ---
