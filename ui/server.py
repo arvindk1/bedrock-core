@@ -2,7 +2,7 @@
 import json
 import os
 import logging
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 import boto3
@@ -531,8 +531,6 @@ def get_event_calendar():
     Used by event calendar and dashboard blocking event display.
     """
     try:
-        from datetime import date, timedelta
-
         # --- macro events from EventLoader ---
         today = date.today()
         macro = []
