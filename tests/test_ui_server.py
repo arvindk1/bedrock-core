@@ -86,3 +86,59 @@ class TestStaticFiles:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "Option Scanner" in resp.text
+
+
+class TestMarketSnapshot:
+    """Tests for GET /api/market/snapshot/{symbol}."""
+
+    def test_market_snapshot_returns_live_regime(self, client):
+        """vol_engine.detect_regime is called and its result appears in volatility.regime."""
+        from agent.vol_engine import VolRegime, VolatilityResult, VolatilityModel
+        from datetime import datetime
+
+        mock_regime = VolRegime.HIGH
+        mock_vol_result = VolatilityResult(
+            annual_volatility=0.42,
+            daily_volatility=0.026,
+            model_used=VolatilityModel.HYBRID,
+            confidence_score=0.85,
+            data_points=252,
+            calculation_date=datetime(2026, 2, 20),
+        )
+        mock_iv_rank = 0.81
+
+        with patch("ui.server.vol_engine.detect_regime", return_value=mock_regime), \
+             patch("ui.server.vol_engine.calculate_volatility", return_value=mock_vol_result), \
+             patch("ui.server.vol_engine.calculate_iv_rank", return_value=mock_iv_rank):
+            resp = client.get("/api/market/snapshot/AAPL")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "volatility" in data
+        assert data["volatility"]["regime"] == "high"
+        assert data["volatility"]["annual"] == pytest.approx(0.42, rel=1e-3)
+        assert data["volatility"]["daily"] == pytest.approx(0.026, rel=1e-3)
+        assert data["volatility"]["iv_rank"] == pytest.approx(0.81, rel=1e-3)
+
+    def test_market_snapshot_no_fake_values(self, client):
+        """relative_strength must NOT be present in the snapshot response."""
+        from agent.vol_engine import VolRegime, VolatilityResult, VolatilityModel
+        from datetime import datetime
+
+        mock_vol_result = VolatilityResult(
+            annual_volatility=0.30,
+            daily_volatility=0.019,
+            model_used=VolatilityModel.HISTORICAL,
+            confidence_score=0.80,
+            data_points=252,
+            calculation_date=datetime(2026, 2, 20),
+        )
+
+        with patch("ui.server.vol_engine.detect_regime", return_value=VolRegime.MEDIUM), \
+             patch("ui.server.vol_engine.calculate_volatility", return_value=mock_vol_result), \
+             patch("ui.server.vol_engine.calculate_iv_rank", return_value=0.50):
+            resp = client.get("/api/market/snapshot/SPY")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "relative_strength" not in data

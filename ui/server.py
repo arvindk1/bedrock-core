@@ -22,6 +22,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 from agent.options_scanner import options_scanner
 from agent.market_checks import gatekeeper, TradeScore
 from agent.market_data import market_data
+from agent.vol_engine import VolEngine
+from agent.event_loader import EventLoader
+
+vol_engine = VolEngine()
+event_loader = EventLoader()
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -427,37 +432,93 @@ def get_market_snapshot(symbol: str):
     try:
         symbol = symbol.upper()
 
-        # Get price data
+        # --- current price (already live) ---
         current_price = market_data.get_current_price(symbol)
 
-        # Mock implementation - returns static market snapshot
-        # In production, integrate with VolEngine, EventLoader, MarketData
+        # --- change_pct: derive from liquidity info or yfinance history ---
+        change_pct = None
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="2d")
+            if hist is not None and len(hist) >= 2:
+                prev_close = float(hist["Close"].iloc[-2])
+                last_close = float(hist["Close"].iloc[-1])
+                if prev_close and prev_close != 0:
+                    change_pct = (last_close - prev_close) / prev_close * 100
+        except Exception as exc:
+            logger.warning(f"Could not compute change_pct for {symbol}: {exc}")
+
+        # --- volume / avg_volume from liquidity metrics ---
+        volume = None
+        avg_volume = None
+        try:
+            liquidity = market_data.get_liquidity_metrics(symbol)
+            volume = liquidity.get("current_volume") or None
+            avg_volume = liquidity.get("avg_volume") or None
+        except Exception as exc:
+            logger.warning(f"Could not fetch liquidity metrics for {symbol}: {exc}")
+
+        # --- volatility block from VolEngine ---
+        vol_block = {
+            "annual": None,
+            "daily": None,
+            "iv_rank": None,
+            "regime": None,
+            "expected_move_30d": None,
+        }
+        try:
+            regime = vol_engine.detect_regime(symbol)
+            vol_block["regime"] = regime.value
+        except Exception as exc:
+            logger.warning(f"Could not detect vol regime for {symbol}: {exc}")
+
+        try:
+            vol_result = vol_engine.calculate_volatility(symbol)
+            vol_block["annual"] = vol_result.annual_volatility
+            vol_block["daily"] = vol_result.daily_volatility
+        except Exception as exc:
+            logger.warning(f"Could not calculate volatility for {symbol}: {exc}")
+
+        try:
+            iv_rank = vol_engine.calculate_iv_rank(symbol)
+            vol_block["iv_rank"] = iv_rank
+        except Exception as exc:
+            logger.warning(f"Could not calculate IV rank for {symbol}: {exc}")
+
+        try:
+            if current_price is not None:
+                em = vol_engine.calculate_expected_move(symbol, current_price, days=30)
+                vol_block["expected_move_30d"] = {
+                    "dollars": em.get("expected_move_dollars"),
+                    "pct": em.get("expected_move_percent"),
+                    "upper": em.get("upper_target"),
+                    "lower": em.get("lower_target"),
+                }
+        except Exception as exc:
+            logger.warning(f"Could not calculate expected move for {symbol}: {exc}")
+
+        # --- upcoming events from EventLoader ---
+        upcoming_events = []
+        try:
+            raw_events = event_loader.get_blocking_events(symbol, days_to_expiry=60)
+            for evt in raw_events[:3]:
+                upcoming_events.append({
+                    "type": evt.get("type"),
+                    "name": evt.get("name"),
+                    "days_until": evt.get("days_until"),
+                })
+        except Exception as exc:
+            logger.warning(f"Could not load events for {symbol}: {exc}")
+
         return JSONResponse({
             "symbol": symbol,
             "current_price": current_price,
-            "change_pct": 1.2,
-            "volume": 2500000,
-            "avg_volume": 2100000,
-            "relative_strength": 0.75,
-            "volatility": {
-                "annual": 0.32,
-                "daily": 0.02,
-                "iv_rank": 0.78,
-                "regime": "HIGH",
-                "expected_move_30d": {
-                    "dollars": 32.50,
-                    "pct": 0.075,
-                    "upper": current_price + 32.50,
-                    "lower": current_price - 32.50,
-                }
-            },
-            "upcoming_events": [
-                {
-                    "type": "earnings",
-                    "days_until": None,
-                    "blocks_dte": [30, 45]
-                }
-            ]
+            "change_pct": change_pct,
+            "volume": volume,
+            "avg_volume": avg_volume,
+            "volatility": vol_block,
+            "upcoming_events": upcoming_events,
         })
     except Exception as e:
         logger.error(f"Market snapshot error: {e}")
