@@ -7,7 +7,7 @@ and blocking-event aggregation for context-aware options trading.
 
 import logging
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 import yfinance as yf
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # 2026 Macro Calendar Constants
 # ---------------------------------------------------------------------------
 
-FOMC_DATES_2026: List[date] = [
+FOMC_DATES_2026: list[date] = [
     date(2026, 3, 18),
     date(2026, 4, 29),
     date(2026, 6, 10),
@@ -29,7 +29,7 @@ FOMC_DATES_2026: List[date] = [
     date(2026, 12, 16),
 ]
 
-CPI_DATES_2026: List[date] = [
+CPI_DATES_2026: list[date] = [
     date(2026, 3, 11),
     date(2026, 4, 10),
     date(2026, 5, 13),
@@ -42,7 +42,7 @@ CPI_DATES_2026: List[date] = [
     date(2026, 12, 9),
 ]
 
-JOBS_DATES_2026: List[date] = [
+JOBS_DATES_2026: list[date] = [
     date(2026, 3, 6),
     date(2026, 4, 3),
     date(2026, 5, 8),
@@ -60,6 +60,7 @@ JOBS_DATES_2026: List[date] = [
 # EventLoader
 # ---------------------------------------------------------------------------
 
+
 class EventLoader:
     """
     Earnings and macro-event intelligence for options trading.
@@ -74,16 +75,16 @@ class EventLoader:
     def __init__(self, cache_duration_hours: int = 4, blackout_days: int = 1):
         self.cache_duration_hours = cache_duration_hours
         self.blackout_days = blackout_days
-        self._cache: Dict[str, Dict] = {}
-        self.macro_events: List[Dict] = self._build_macro_calendar()
+        self._cache: dict[str, dict] = {}
+        self.macro_events: list[dict] = self._build_macro_calendar()
 
     # ------------------------------------------------------------------
     # Macro calendar
     # ------------------------------------------------------------------
 
-    def _build_macro_calendar(self) -> List[Dict]:
+    def _build_macro_calendar(self) -> list[dict]:
         """Combine FOMC, CPI, and Jobs dates into a unified event list."""
-        events: List[Dict] = []
+        events: list[dict] = []
 
         for d in FOMC_DATES_2026:
             events.append({"name": "FOMC Meeting", "date": d, "impact": "high"})
@@ -114,6 +115,9 @@ class EventLoader:
                 self._set_cache(cache_key, None)
                 return None
 
+            if earnings_dates.index.tz is not None:
+                earnings_dates.index = earnings_dates.index.tz_localize(None)
+
             now = datetime.now()
             future_mask = earnings_dates.index > now
             future_dates = earnings_dates.index[future_mask]
@@ -137,7 +141,7 @@ class EventLoader:
 
     def check_earnings_before_expiry(
         self, symbol: str, days_to_expiry: int
-    ) -> Optional[Dict]:
+    ) -> Optional[dict]:
         """
         Return a dict if earnings fall within *days_to_expiry*, else None.
 
@@ -178,9 +182,7 @@ class EventLoader:
             return days
         return None
 
-    def is_macro_blackout(
-        self, target_date
-    ) -> Tuple[bool, Optional[str]]:
+    def is_macro_blackout(self, target_date) -> tuple[bool, Optional[str]]:
         """
         Check whether *target_date* falls within *blackout_days* of a
         macro event.  Accepts both ``date`` and ``datetime`` objects.
@@ -198,9 +200,7 @@ class EventLoader:
 
         return False, None
 
-    def get_blocking_events(
-        self, symbol: str, days_to_expiry: int
-    ) -> List[Dict]:
+    def get_blocking_events(self, symbol: str, days_to_expiry: int) -> list[dict]:
         """
         Aggregate earnings and macro events that fall within the trade
         window defined by *days_to_expiry*.
@@ -213,7 +213,7 @@ class EventLoader:
           - days_until: days until event
           - reason_code: structured EVENT_BLOCK code
         """
-        events: List[Dict] = []
+        events: list[dict] = []
 
         # Earnings check
         earnings = self.check_earnings_before_expiry(symbol, days_to_expiry)
@@ -248,14 +248,16 @@ class EventLoader:
                     },
                 )
 
-                events.append({
-                    "type": "macro",
-                    "name": evt["name"],
-                    "date": evt["date"].isoformat(),
-                    "impact": evt["impact"],
-                    "days_until": days_until,
-                    "reason_code": reason_code,
-                })
+                events.append(
+                    {
+                        "type": "macro",
+                        "name": evt["name"],
+                        "date": evt["date"].isoformat(),
+                        "impact": evt["impact"],
+                        "days_until": days_until,
+                        "reason_code": reason_code,
+                    }
+                )
 
         return events
 

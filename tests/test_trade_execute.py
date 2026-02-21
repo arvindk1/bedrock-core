@@ -1,6 +1,7 @@
 """Tests for POST /api/trade/execute endpoint."""
+
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,13 +14,16 @@ from sqlalchemy.pool import StaticPool
 # In-memory DB fixture shared across tests in this module
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def in_memory_session_factory():
     """
     Shared in-memory SQLite DB with StaticPool (same connection reused)
     so every SessionLocal() call within a test sees the same data.
     """
-    import sys, os
+    import sys
+    import os
+
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
     from db.models import Base, Portfolio
@@ -48,14 +52,18 @@ def in_memory_session_factory():
 def client_with_db(in_memory_session_factory):
     """TestClient with server's SessionLocal patched to the in-memory DB."""
     from ui.server import app
-    with patch("ui.server.SessionLocal", in_memory_session_factory), \
-         patch("ui.server.seed", return_value=None):
+
+    with (
+        patch("ui.server.SessionLocal", in_memory_session_factory),
+        patch("ui.server.seed", return_value=None),
+    ):
         yield TestClient(app)
 
 
 # ---------------------------------------------------------------------------
 # Helper: build a minimal valid trade execute payload
 # ---------------------------------------------------------------------------
+
 
 def _trade_payload(**overrides):
     payload = {
@@ -80,10 +88,13 @@ def _trade_payload(**overrides):
 # Approved trade — position saved and success response returned
 # ---------------------------------------------------------------------------
 
+
 class TestTradeExecuteApproved:
     """POST /api/trade/execute when gatekeeper approves the trade."""
 
-    def test_trade_execute_approved_saves_position(self, client_with_db, in_memory_session_factory):
+    def test_trade_execute_approved_saves_position(
+        self, client_with_db, in_memory_session_factory
+    ):
         """Mock gatekeeper to approve; assert position saved to in-memory DB and response correct."""
         from agent.market_checks import TradeScore
 
@@ -110,7 +121,9 @@ class TestTradeExecuteApproved:
         assert data["gatekeeper_score"] == 87.0
         assert "Position opened" in data["message"]
 
-    def test_trade_execute_position_persisted_in_db(self, client_with_db, in_memory_session_factory):
+    def test_trade_execute_position_persisted_in_db(
+        self, client_with_db, in_memory_session_factory
+    ):
         """Position is actually present in the DB after a successful execute call."""
         from agent.market_checks import TradeScore
         from db.models import Position
@@ -144,7 +157,9 @@ class TestTradeExecuteApproved:
         finally:
             db.close()
 
-    def test_trade_execute_decision_audit_saved(self, client_with_db, in_memory_session_factory):
+    def test_trade_execute_decision_audit_saved(
+        self, client_with_db, in_memory_session_factory
+    ):
         """A DecisionAudit row is created for each successful execute call."""
         from agent.market_checks import TradeScore
         from db.models import DecisionAudit
@@ -209,6 +224,7 @@ class TestTradeExecuteApproved:
 # Rejected trade — 422 with proper body, no position saved
 # ---------------------------------------------------------------------------
 
+
 class TestTradeExecuteRejected:
     """POST /api/trade/execute when gatekeeper rejects the trade."""
 
@@ -254,7 +270,9 @@ class TestTradeExecuteRejected:
         assert data["reason"] == rejection_msg
         assert data["score"] == 60.0
 
-    def test_trade_execute_rejected_no_position_saved(self, client_with_db, in_memory_session_factory):
+    def test_trade_execute_rejected_no_position_saved(
+        self, client_with_db, in_memory_session_factory
+    ):
         """When rejected, no new Position row is written to the DB."""
         from agent.market_checks import TradeScore
         from db.models import Position
@@ -283,12 +301,15 @@ class TestTradeExecuteRejected:
         count_after = db.query(Position).count()
         db.close()
 
-        assert count_after == count_before, "No new position should be saved on rejection"
+        assert count_after == count_before, (
+            "No new position should be saved on rejection"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Sector map resolution
 # ---------------------------------------------------------------------------
+
 
 class TestTradeExecuteSectorMap:
     """SECTOR_MAP fallback logic for sector field."""
@@ -408,7 +429,9 @@ class TestTradeExecuteSectorMap:
         )
 
         # AAPL maps to "Technology" in SECTOR_MAP, but we pass "Custom Sector"
-        payload = _trade_payload(symbol="AAPL", strategy="BULL_CALL_SPREAD", sector="Custom Sector")
+        payload = _trade_payload(
+            symbol="AAPL", strategy="BULL_CALL_SPREAD", sector="Custom Sector"
+        )
 
         with patch("ui.server.gatekeeper.check_trade", return_value=approved_score):
             resp = client_with_db.post("/api/trade/execute", json=payload)
@@ -428,6 +451,7 @@ class TestTradeExecuteSectorMap:
 # ---------------------------------------------------------------------------
 # Input validation
 # ---------------------------------------------------------------------------
+
 
 class TestTradeExecuteValidation:
     """Input validation for POST /api/trade/execute."""

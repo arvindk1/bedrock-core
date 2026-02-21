@@ -4,8 +4,6 @@ Phase 2, Task 1: Risk Gate Integration
 Tests for find_cheapest_options() with RiskEngine integration.
 """
 
-import pytest
-from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
 import sys
@@ -14,7 +12,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
 from options_scanner import find_cheapest_options
-from risk_engine import RiskEngine
 
 
 class TestFindCheapestOptionsBasic:
@@ -55,7 +52,11 @@ class TestRiskGateIntegration:
         mock_ticker = MagicMock()
         price_data = MagicMock()
         price_data.empty = False
-        price_data.__getitem__ = MagicMock(return_value=MagicMock(iloc=MagicMock(__getitem__=MagicMock(return_value=150.0))))
+        price_data.__getitem__ = MagicMock(
+            return_value=MagicMock(
+                iloc=MagicMock(__getitem__=MagicMock(return_value=150.0))
+            )
+        )
         mock_ticker.history.return_value = price_data
         mock_ticker.options = ["2026-03-20", "2026-04-17", "2026-05-15"]
         mock_ticker_cls.return_value = mock_ticker
@@ -67,7 +68,7 @@ class TestRiskGateIntegration:
             "2026-06-01",
             top_n=5,
             portfolio=[],
-            market_context={"daily_pnl": 0, "portfolio_value": 100000}
+            market_context={"daily_pnl": 0, "portfolio_value": 100000},
         )
 
         # Should return a string result (either opportunities or error message)
@@ -80,17 +81,17 @@ class TestRiskGateIntegration:
         mock_ticker = MagicMock()
         price_data = MagicMock()
         price_data.empty = False
-        price_data.__getitem__ = MagicMock(return_value=MagicMock(iloc=MagicMock(__getitem__=MagicMock(return_value=100.0))))
+        price_data.__getitem__ = MagicMock(
+            return_value=MagicMock(
+                iloc=MagicMock(__getitem__=MagicMock(return_value=100.0))
+            )
+        )
         mock_ticker.history.return_value = price_data
         mock_ticker.options = ["2026-03-20"]
         mock_ticker_cls.return_value = mock_ticker
 
         result = find_cheapest_options(
-            "SPY",
-            "2026-03-01",
-            "2026-06-01",
-            portfolio=[],
-            market_context=None
+            "SPY", "2026-03-01", "2026-06-01", portfolio=[], market_context=None
         )
 
         # Even if no opportunities, should not crash
@@ -107,7 +108,11 @@ class TestRiskGateRejectionMessages:
         mock_ticker = MagicMock()
         price_data = MagicMock()
         price_data.empty = False
-        price_data.__getitem__ = MagicMock(return_value=MagicMock(iloc=MagicMock(__getitem__=MagicMock(return_value=100.0))))
+        price_data.__getitem__ = MagicMock(
+            return_value=MagicMock(
+                iloc=MagicMock(__getitem__=MagicMock(return_value=100.0))
+            )
+        )
         mock_ticker.history.return_value = price_data
         mock_ticker.options = []
         mock_ticker_cls.return_value = mock_ticker
@@ -127,7 +132,11 @@ class TestOutputFormat:
         mock_ticker = MagicMock()
         price_data = MagicMock()
         price_data.empty = False
-        price_data.__getitem__ = MagicMock(return_value=MagicMock(iloc=MagicMock(__getitem__=MagicMock(return_value=100.0))))
+        price_data.__getitem__ = MagicMock(
+            return_value=MagicMock(
+                iloc=MagicMock(__getitem__=MagicMock(return_value=100.0))
+            )
+        )
         mock_ticker.history.return_value = price_data
         mock_ticker.options = []
         mock_ticker_cls.return_value = mock_ticker
@@ -148,7 +157,11 @@ class TestPortfolioContextPassed:
         mock_ticker = MagicMock()
         price_data = MagicMock()
         price_data.empty = False
-        price_data.__getitem__ = MagicMock(return_value=MagicMock(iloc=MagicMock(__getitem__=MagicMock(return_value=100.0))))
+        price_data.__getitem__ = MagicMock(
+            return_value=MagicMock(
+                iloc=MagicMock(__getitem__=MagicMock(return_value=100.0))
+            )
+        )
         mock_ticker.history.return_value = price_data
         mock_ticker.options = []
         mock_ticker_cls.return_value = mock_ticker
@@ -161,7 +174,7 @@ class TestPortfolioContextPassed:
             "2026-03-01",
             "2026-06-01",
             portfolio=portfolio,
-            market_context=market_ctx
+            market_context=market_ctx,
         )
 
         # Should handle without error

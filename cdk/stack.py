@@ -104,35 +104,43 @@ class AgentCoreStack(Stack):
                 bucket=source_asset.bucket,
                 path=source_asset.s3_object_key,
             ),
-            build_spec=codebuild.BuildSpec.from_object({
-                "version": "0.2",
-                "phases": {
-                    "pre_build": {
-                        "commands": [
-                            "echo Logging in to Amazon ECR...",
-                            "aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com",
-                        ]
+            build_spec=codebuild.BuildSpec.from_object(
+                {
+                    "version": "0.2",
+                    "phases": {
+                        "pre_build": {
+                            "commands": [
+                                "echo Logging in to Amazon ECR...",
+                                "aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com",
+                            ]
+                        },
+                        "build": {
+                            "commands": [
+                                "echo Building Docker image...",
+                                "docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .",
+                                "docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG",
+                            ]
+                        },
+                        "post_build": {
+                            "commands": [
+                                "echo Pushing Docker image...",
+                                "docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG",
+                                "echo Done.",
+                            ]
+                        },
                     },
-                    "build": {
-                        "commands": [
-                            "echo Building Docker image...",
-                            "docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .",
-                            "docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG",
-                        ]
-                    },
-                    "post_build": {
-                        "commands": [
-                            "echo Pushing Docker image...",
-                            "docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG",
-                            "echo Done.",
-                        ]
-                    },
-                },
-            }),
+                }
+            ),
             environment_variables={
-                "AWS_DEFAULT_REGION": codebuild.BuildEnvironmentVariable(value=self.region),
-                "AWS_ACCOUNT_ID": codebuild.BuildEnvironmentVariable(value=self.account),
-                "IMAGE_REPO_NAME": codebuild.BuildEnvironmentVariable(value=ecr_repo.repository_name),
+                "AWS_DEFAULT_REGION": codebuild.BuildEnvironmentVariable(
+                    value=self.region
+                ),
+                "AWS_ACCOUNT_ID": codebuild.BuildEnvironmentVariable(
+                    value=self.account
+                ),
+                "IMAGE_REPO_NAME": codebuild.BuildEnvironmentVariable(
+                    value=ecr_repo.repository_name
+                ),
                 "IMAGE_TAG": codebuild.BuildEnvironmentVariable(value=image_tag),
             },
         )
@@ -146,7 +154,16 @@ class AgentCoreStack(Stack):
             timeout=Duration.minutes(15),
             code=lambda_.Code.from_asset(
                 os.path.dirname(__file__),
-                exclude=["*.pyc", "__pycache__", "cdk.out", ".venv", "cdk.json", "*.txt", "app.py", "stack.py"],
+                exclude=[
+                    "*.pyc",
+                    "__pycache__",
+                    "cdk.out",
+                    ".venv",
+                    "cdk.json",
+                    "*.txt",
+                    "app.py",
+                    "stack.py",
+                ],
             ),
             initial_policy=[
                 iam.PolicyStatement(
@@ -181,7 +198,9 @@ class AgentCoreStack(Stack):
                                 "ecr:GetDownloadUrlForLayer",
                                 "ecr:BatchCheckLayerAvailability",
                             ],
-                            resources=[f"arn:aws:ecr:{self.region}:{self.account}:repository/*"],
+                            resources=[
+                                f"arn:aws:ecr:{self.region}:{self.account}:repository/*"
+                            ],
                         ),
                         iam.PolicyStatement(
                             sid="ECRTokenAccess",
@@ -220,7 +239,9 @@ class AgentCoreStack(Stack):
                             actions=["cloudwatch:PutMetricData"],
                             resources=["*"],
                             conditions={
-                                "StringEquals": {"cloudwatch:namespace": "bedrock-agentcore"}
+                                "StringEquals": {
+                                    "cloudwatch:namespace": "bedrock-agentcore"
+                                }
                             },
                         ),
                         iam.PolicyStatement(
@@ -280,14 +301,23 @@ class AgentCoreStack(Stack):
         agent_runtime.node.add_dependency(trigger_build)
 
         # --- Outputs ---
-        CfnOutput(self, "AgentRuntimeId",
-                  description="Agent Runtime ID",
-                  value=agent_runtime.attr_agent_runtime_id)
+        CfnOutput(
+            self,
+            "AgentRuntimeId",
+            description="Agent Runtime ID",
+            value=agent_runtime.attr_agent_runtime_id,
+        )
 
-        CfnOutput(self, "AgentRuntimeArn",
-                  description="Agent Runtime ARN",
-                  value=agent_runtime.attr_agent_runtime_arn)
+        CfnOutput(
+            self,
+            "AgentRuntimeArn",
+            description="Agent Runtime ARN",
+            value=agent_runtime.attr_agent_runtime_arn,
+        )
 
-        CfnOutput(self, "AgentRoleArn",
-                  description="Agent execution role ARN",
-                  value=agent_role.role_arn)
+        CfnOutput(
+            self,
+            "AgentRoleArn",
+            description="Agent execution role ARN",
+            value=agent_role.role_arn,
+        )

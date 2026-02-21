@@ -1,4 +1,5 @@
 """Tests for the SQLite data layer: Portfolio, Position, DecisionAudit models."""
+
 import pytest
 import sys
 import os
@@ -16,10 +17,13 @@ from db.models import Base, Portfolio, Position, DecisionAudit
 # Shared in-memory DB fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def in_memory_engine():
     """Return a fresh in-memory SQLite engine with all tables created."""
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(bind=engine)
     yield engine
     engine.dispose()
@@ -37,6 +41,7 @@ def db_session(in_memory_engine):
 # ---------------------------------------------------------------------------
 # Test: init_db creates all expected tables
 # ---------------------------------------------------------------------------
+
 
 def test_init_db_creates_tables(in_memory_engine):
     """init_db() equivalent: Base.metadata.create_all creates all three tables."""
@@ -65,12 +70,26 @@ def test_positions_table_columns(in_memory_engine):
     cols = {c["name"] for c in inspector.get_columns("positions")}
 
     required = {
-        "id", "portfolio_id", "symbol", "strategy", "quantity",
-        "cost_basis", "current_mark", "unrealized_pnl",
-        "max_profit", "max_loss",
-        "delta", "gamma", "theta", "vega",
-        "sector", "is_credit", "open_date", "expiration_date",
-        "days_held", "status",
+        "id",
+        "portfolio_id",
+        "symbol",
+        "strategy",
+        "quantity",
+        "cost_basis",
+        "current_mark",
+        "unrealized_pnl",
+        "max_profit",
+        "max_loss",
+        "delta",
+        "gamma",
+        "theta",
+        "vega",
+        "sector",
+        "is_credit",
+        "open_date",
+        "expiration_date",
+        "days_held",
+        "status",
     }
     assert required.issubset(cols), f"Missing columns: {required - cols}"
 
@@ -81,8 +100,14 @@ def test_decision_audits_table_columns(in_memory_engine):
     cols = {c["name"] for c in inspector.get_columns("decision_audits")}
 
     required = {
-        "id", "portfolio_id", "symbol", "scan_timestamp",
-        "policy_mode", "regime", "picks_count", "decision_log_json",
+        "id",
+        "portfolio_id",
+        "symbol",
+        "scan_timestamp",
+        "policy_mode",
+        "regime",
+        "picks_count",
+        "decision_log_json",
     }
     assert required.issubset(cols), f"Missing columns: {required - cols}"
 
@@ -91,9 +116,9 @@ def test_decision_audits_table_columns(in_memory_engine):
 # Test: seeding creates the expected portfolio and positions
 # ---------------------------------------------------------------------------
 
+
 def _run_seed(db_session):
     """Run the seed logic against an existing session (replicates seed.py logic)."""
-    from datetime import datetime
 
     if db_session.query(Portfolio).count() > 0:
         return  # already seeded
@@ -104,39 +129,104 @@ def _run_seed(db_session):
 
     positions = [
         Position(
-            portfolio_id=portfolio.id, symbol="AAPL", strategy="BULL_CALL_SPREAD",
-            quantity=2, cost_basis=250.0, current_mark=285.0, unrealized_pnl=70.0,
-            max_profit=480.0, max_loss=520.0, delta=0.65, gamma=0.12, theta=-0.08, vega=-0.15,
-            sector="Technology", is_credit=False, expiration_date="2026-03-21",
-            days_held=12, status="open",
+            portfolio_id=portfolio.id,
+            symbol="AAPL",
+            strategy="BULL_CALL_SPREAD",
+            quantity=2,
+            cost_basis=250.0,
+            current_mark=285.0,
+            unrealized_pnl=70.0,
+            max_profit=480.0,
+            max_loss=520.0,
+            delta=0.65,
+            gamma=0.12,
+            theta=-0.08,
+            vega=-0.15,
+            sector="Technology",
+            is_credit=False,
+            expiration_date="2026-03-21",
+            days_held=12,
+            status="open",
         ),
         Position(
-            portfolio_id=portfolio.id, symbol="NVDA", strategy="SHORT_CALL_SPREAD",
-            quantity=3, cost_basis=180.0, current_mark=162.0, unrealized_pnl=54.0,
-            max_profit=180.0, max_loss=270.0, delta=-0.45, gamma=-0.08, theta=0.18, vega=-0.25,
-            sector="Technology", is_credit=True, expiration_date="2026-03-14",
-            days_held=8, status="open",
+            portfolio_id=portfolio.id,
+            symbol="NVDA",
+            strategy="SHORT_CALL_SPREAD",
+            quantity=3,
+            cost_basis=180.0,
+            current_mark=162.0,
+            unrealized_pnl=54.0,
+            max_profit=180.0,
+            max_loss=270.0,
+            delta=-0.45,
+            gamma=-0.08,
+            theta=0.18,
+            vega=-0.25,
+            sector="Technology",
+            is_credit=True,
+            expiration_date="2026-03-14",
+            days_held=8,
+            status="open",
         ),
         Position(
-            portfolio_id=portfolio.id, symbol="JPM", strategy="IRON_CONDOR",
-            quantity=1, cost_basis=150.0, current_mark=155.0, unrealized_pnl=5.0,
-            max_profit=150.0, max_loss=350.0, delta=0.05, gamma=-0.02, theta=0.25, vega=-0.30,
-            sector="Finance", is_credit=True, expiration_date="2026-04-17",
-            days_held=5, status="open",
+            portfolio_id=portfolio.id,
+            symbol="JPM",
+            strategy="IRON_CONDOR",
+            quantity=1,
+            cost_basis=150.0,
+            current_mark=155.0,
+            unrealized_pnl=5.0,
+            max_profit=150.0,
+            max_loss=350.0,
+            delta=0.05,
+            gamma=-0.02,
+            theta=0.25,
+            vega=-0.30,
+            sector="Finance",
+            is_credit=True,
+            expiration_date="2026-04-17",
+            days_held=5,
+            status="open",
         ),
         Position(
-            portfolio_id=portfolio.id, symbol="UNH", strategy="PUT_CREDIT_SPREAD",
-            quantity=2, cost_basis=120.0, current_mark=110.0, unrealized_pnl=20.0,
-            max_profit=120.0, max_loss=380.0, delta=0.15, gamma=-0.05, theta=0.12, vega=-0.10,
-            sector="Healthcare", is_credit=True, expiration_date="2026-03-28",
-            days_held=4, status="open",
+            portfolio_id=portfolio.id,
+            symbol="UNH",
+            strategy="PUT_CREDIT_SPREAD",
+            quantity=2,
+            cost_basis=120.0,
+            current_mark=110.0,
+            unrealized_pnl=20.0,
+            max_profit=120.0,
+            max_loss=380.0,
+            delta=0.15,
+            gamma=-0.05,
+            theta=0.12,
+            vega=-0.10,
+            sector="Healthcare",
+            is_credit=True,
+            expiration_date="2026-03-28",
+            days_held=4,
+            status="open",
         ),
         Position(
-            portfolio_id=portfolio.id, symbol="XOM", strategy="COVERED_CALL",
-            quantity=1, cost_basis=130.0, current_mark=105.0, unrealized_pnl=-16.0,
-            max_profit=130.0, max_loss=0.0, delta=0.60, gamma=0.08, theta=0.20, vega=-0.19,
-            sector="Energy", is_credit=True, expiration_date="2026-03-21",
-            days_held=15, status="open",
+            portfolio_id=portfolio.id,
+            symbol="XOM",
+            strategy="COVERED_CALL",
+            quantity=1,
+            cost_basis=130.0,
+            current_mark=105.0,
+            unrealized_pnl=-16.0,
+            max_profit=130.0,
+            max_loss=0.0,
+            delta=0.60,
+            gamma=0.08,
+            theta=0.20,
+            vega=-0.19,
+            sector="Energy",
+            is_credit=True,
+            expiration_date="2026-03-21",
+            days_held=15,
+            status="open",
         ),
     ]
     db_session.add_all(positions)
@@ -175,6 +265,7 @@ def test_seed_portfolio_defaults(db_session):
 # ---------------------------------------------------------------------------
 # Test: individual position field values
 # ---------------------------------------------------------------------------
+
 
 def test_position_fields_aapl(db_session):
     """Seeded AAPL position has correct symbol, strategy, and sector."""
@@ -236,6 +327,7 @@ def test_portfolio_positions_relationship(db_session):
 # ---------------------------------------------------------------------------
 # Test: DecisionAudit model CRUD
 # ---------------------------------------------------------------------------
+
 
 def test_decision_audit_insert(db_session):
     """DecisionAudit can be inserted and queried without a portfolio FK."""

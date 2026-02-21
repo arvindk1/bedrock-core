@@ -15,7 +15,7 @@ This module:
 import logging
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from reason_codes import is_structured_reason, parse_reason_code, extract_reason_summary
 
@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 # Helper Functions
 # ============================================================================
 
-def _evaluate_event_policy(blocking_events: List[Dict[str, Any]]) -> str:
+
+def _evaluate_event_policy(blocking_events: list[dict[str, Any]]) -> str:
     """
     Smart event policy (desk-style).
 
@@ -36,14 +37,16 @@ def _evaluate_event_policy(blocking_events: List[Dict[str, Any]]) -> str:
         return "PLAY"
 
     # Check closest event
-    min_days_until = min((evt.get("days_until", 99) for evt in blocking_events), default=99)
+    min_days_until = min(
+        (evt.get("days_until", 99) for evt in blocking_events), default=99
+    )
 
     if min_days_until <= 1:
         return "TIGHT"  # No new trades
     elif min_days_until <= 14:
-        return "WARN"   # Allow with haircuts
+        return "WARN"  # Allow with haircuts
     else:
-        return "PLAY"   # Normal
+        return "PLAY"  # Normal
 
 
 def format_reason_for_display(reason: Optional[str]) -> str:
@@ -62,7 +65,7 @@ def format_reason_for_display(reason: Optional[str]) -> str:
     return reason
 
 
-def format_event_for_display(event: Dict[str, Any]) -> str:
+def format_event_for_display(event: dict[str, Any]) -> str:
     """
     Format a blocking event for human-readable display.
 
@@ -81,13 +84,16 @@ def format_event_for_display(event: Dict[str, Any]) -> str:
     if event_type == "earnings":
         return f"Earnings ({event.get('earnings_days', '?')} days until)"
     elif event_type == "macro":
-        return f"{event.get('name', 'Event')} ({event.get('days_until', '?')} days until)"
+        return (
+            f"{event.get('name', 'Event')} ({event.get('days_until', '?')} days until)"
+        )
     else:
         return event.get("description", str(event))
 
 
-
-def _build_pipeline_journey(pick: Dict[str, Any], log_context: Dict[str, Any]) -> Dict[str, Any]:
+def _build_pipeline_journey(
+    pick: dict[str, Any], log_context: dict[str, Any]
+) -> dict[str, Any]:
     """
     Build structured pipeline journey for a final pick.
 
@@ -106,13 +112,17 @@ def _build_pipeline_journey(pick: Dict[str, Any], log_context: Dict[str, Any]) -
     sector = log_context.get("sector", "Unknown")
     sector_pct = log_context.get("sector_pct", 0.0)
 
-    iv_rank = regime_details.get("iv_rank", 0) if isinstance(regime_details, dict) else 0
+    iv_rank = (
+        regime_details.get("iv_rank", 0) if isinstance(regime_details, dict) else 0
+    )
     if iv_rank and iv_rank <= 1.0:
         iv_rank_display = round(iv_rank * 100)
     else:
         iv_rank_display = round(iv_rank) if iv_rank else 0
 
-    annual_vol = regime_details.get("annual_vol", 0) if isinstance(regime_details, dict) else 0
+    annual_vol = (
+        regime_details.get("annual_vol", 0) if isinstance(regime_details, dict) else 0
+    )
     max_loss = pick.get("max_loss", 0)
     gk_score = pick.get("gatekeeper_score", 0)
 
@@ -189,7 +199,7 @@ def _build_strategy_reasoning(
     iv_rank: Optional[float],
     spy_trend: Optional[str],
     policy_mode: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build strategy reasoning object for a final pick."""
     iv_display = 0
     if iv_rank is not None:
@@ -200,7 +210,9 @@ def _build_strategy_reasoning(
         "DEBIT_SPREAD": "debit spreads",
         "VERTICAL_SPREAD": "vertical spreads",
     }
-    strategy_label = strategy_display_map.get(strategy_hint, strategy_hint.replace("_", " ").lower())
+    strategy_label = strategy_display_map.get(
+        strategy_hint, strategy_hint.replace("_", " ").lower()
+    )
 
     regime_label = (regime or "UNKNOWN").upper()
     policy_label = policy_mode.title()
@@ -222,7 +234,9 @@ def _build_strategy_reasoning(
     }
 
 
-def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk: float) -> Dict[str, Any]:
+def _build_no_trades_explanation(
+    log: "DecisionLog", policy_mode: str, max_risk: float
+) -> dict[str, Any]:
     """
     Build structured 'why no trades' explanation when final_picks is empty.
     Ranked by primary blocker.
@@ -231,14 +245,17 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
         "generated": len(log.candidates_raw),
         "after_event": len(log.candidates_raw) if log.event_policy != "TIGHT" else 0,
         "after_risk": len(log.candidates_after_risk_gate),
-        "after_gatekeeper": len([
-            c for c in log.candidates_after_risk_gate
-            if not any(
-                r.get("candidate", {}).get("symbol") == c.get("symbol") and
-                r.get("candidate", {}).get("strategy") == c.get("strategy")
-                for r in log.rejections_gatekeeper
-            )
-        ]),
+        "after_gatekeeper": len(
+            [
+                c
+                for c in log.candidates_after_risk_gate
+                if not any(
+                    r.get("candidate", {}).get("symbol") == c.get("symbol")
+                    and r.get("candidate", {}).get("strategy") == c.get("strategy")
+                    for r in log.rejections_gatekeeper
+                )
+            ]
+        ),
         "after_correlation": len(log.candidates_after_correlation),
         "final": 0,
     }
@@ -249,12 +266,14 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
 
     if log.event_policy == "TIGHT" and log.blocking_events:
         evt = log.blocking_events[0]
-        top_blockers.append({
-            "gate": "event",
-            "code": "EVENT_TIGHT",
-            "count": len(log.candidates_raw),
-            "display": f"Event within 1 day — no new trades permitted: {format_event_for_display(evt)}",
-        })
+        top_blockers.append(
+            {
+                "gate": "event",
+                "code": "EVENT_TIGHT",
+                "count": len(log.candidates_raw),
+                "display": f"Event within 1 day — no new trades permitted: {format_event_for_display(evt)}",
+            }
+        )
         next_actions = [
             "Wait for event to pass",
             "Monitor positions already held",
@@ -264,7 +283,8 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
 
     elif log.rejections_risk:
         from reason_codes import parse_reason_code, is_structured_reason
-        rule_counts: Dict[str, int] = {}
+
+        rule_counts: dict[str, int] = {}
         for candidate, reason in log.rejections_risk:
             if is_structured_reason(reason):
                 parsed = parse_reason_code(reason)
@@ -289,12 +309,14 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
                         used_pct = ctx.get("used_pct", "?")
                         limit_pct = ctx.get("limit_pct", 25)
                         break
-            top_blockers.append({
-                "gate": "risk",
-                "code": "SECTOR_CAP",
-                "count": count,
-                "display": f"{sector_name} sector at {used_pct}% (limit {limit_pct}%) — {count} candidates blocked",
-            })
+            top_blockers.append(
+                {
+                    "gate": "risk",
+                    "code": "SECTOR_CAP",
+                    "count": count,
+                    "display": f"{sector_name} sector at {used_pct}% (limit {limit_pct}%) — {count} candidates blocked",
+                }
+            )
             next_actions = [
                 f"Reduce {sector_name} sector exposure below {limit_pct}%",
                 "Expand scan to symbols in other sectors",
@@ -303,12 +325,14 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
             summary = f"0 picks: {count}/{len(log.candidates_raw)} rejected at Risk Gate (sector cap)"
 
         elif top_rule == "MAX_LOSS_EXCEEDED":
-            top_blockers.append({
-                "gate": "risk",
-                "code": "MAX_LOSS_EXCEEDED",
-                "count": count,
-                "display": f"Max loss exceeds ${max_risk:.0f} limit — {count} candidates blocked",
-            })
+            top_blockers.append(
+                {
+                    "gate": "risk",
+                    "code": "MAX_LOSS_EXCEEDED",
+                    "count": count,
+                    "display": f"Max loss exceeds ${max_risk:.0f} limit — {count} candidates blocked",
+                }
+            )
             next_actions = [
                 "Switch policy from Tight \u2192 Moderate to raise risk limit",
                 "Scan for tighter spreads with lower max loss",
@@ -316,23 +340,29 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
             summary = f"0 picks: {count}/{len(log.candidates_raw)} exceeded ${max_risk:.0f} max loss limit"
 
         else:
-            top_blockers.append({
-                "gate": "risk",
-                "code": top_rule,
-                "count": count,
-                "display": f"Risk gate ({top_rule.replace('_', ' ').title()}) rejected {count} candidates",
-            })
+            top_blockers.append(
+                {
+                    "gate": "risk",
+                    "code": top_rule,
+                    "count": count,
+                    "display": f"Risk gate ({top_rule.replace('_', ' ').title()}) rejected {count} candidates",
+                }
+            )
             next_actions = ["Review risk parameters", "Expand scan date range"]
-            summary = f"0 picks: {count}/{len(log.candidates_raw)} rejected at Risk Gate"
+            summary = (
+                f"0 picks: {count}/{len(log.candidates_raw)} rejected at Risk Gate"
+            )
 
     elif log.rejections_gatekeeper:
         count = len(log.rejections_gatekeeper)
-        top_blockers.append({
-            "gate": "gatekeeper",
-            "code": "LOW_SCORE",
-            "count": count,
-            "display": f"Gatekeeper score below threshold 70 — {count} candidates blocked",
-        })
+        top_blockers.append(
+            {
+                "gate": "gatekeeper",
+                "code": "LOW_SCORE",
+                "count": count,
+                "display": f"Gatekeeper score below threshold 70 — {count} candidates blocked",
+            }
+        )
         next_actions = [
             "Scan for more liquid options (tighter spreads)",
             "Expand date range to capture higher-quality expirations",
@@ -341,12 +371,14 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
 
     elif log.rejections_correlation:
         count = len(log.rejections_correlation)
-        top_blockers.append({
-            "gate": "correlation",
-            "code": "CORRELATION_BREACH",
-            "count": count,
-            "display": f"Portfolio correlation too high — {count} candidates blocked",
-        })
+        top_blockers.append(
+            {
+                "gate": "correlation",
+                "code": "CORRELATION_BREACH",
+                "count": count,
+                "display": f"Portfolio correlation too high — {count} candidates blocked",
+            }
+        )
         next_actions = [
             "Close or reduce correlated positions before adding new trades",
             "Scan symbols in different sectors",
@@ -354,12 +386,14 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
         summary = f"0 picks: {count} rejected by Correlation Gate (too correlated with existing portfolio)"
 
     elif not log.candidates_raw:
-        top_blockers.append({
-            "gate": "generated",
-            "code": "NO_CANDIDATES",
-            "count": 0,
-            "display": "No option candidates found in the specified date window",
-        })
+        top_blockers.append(
+            {
+                "gate": "generated",
+                "code": "NO_CANDIDATES",
+                "count": 0,
+                "display": "No option candidates found in the specified date window",
+            }
+        )
         next_actions = [
             "Expand date range (start_date / end_date)",
             "Verify symbol has liquid options",
@@ -377,6 +411,7 @@ def _build_no_trades_explanation(log: "DecisionLog", policy_mode: str, max_risk:
 # ============================================================================
 # Decision Log Artifact
 # ============================================================================
+
 
 @dataclass
 class DecisionLog:
@@ -397,35 +432,35 @@ class DecisionLog:
 
     # Vol & Events Context
     regime: Optional[str] = None
-    regime_details: Dict[str, Any] = field(default_factory=dict)
-    blocking_events: List[Dict[str, Any]] = field(default_factory=list)
+    regime_details: dict[str, Any] = field(default_factory=dict)
+    blocking_events: list[dict[str, Any]] = field(default_factory=list)
     strategy_hint: Optional[str] = None
     event_policy: str = "PLAY"  # TIGHT, WARN, or PLAY
 
     # Candidates
-    candidates_raw: List[Dict[str, Any]] = field(default_factory=list)
-    candidates_after_risk_gate: List[Dict[str, Any]] = field(default_factory=list)
-    candidates_after_correlation: List[Dict[str, Any]] = field(default_factory=list)
+    candidates_raw: list[dict[str, Any]] = field(default_factory=list)
+    candidates_after_risk_gate: list[dict[str, Any]] = field(default_factory=list)
+    candidates_after_correlation: list[dict[str, Any]] = field(default_factory=list)
 
     # Rejections
-    rejections_risk: List[Tuple[Dict, str]] = field(default_factory=list)
-    rejections_gatekeeper: List[Dict[str, Any]] = field(default_factory=list)
-    rejections_correlation: List[Tuple[Dict, str]] = field(default_factory=list)
+    rejections_risk: list[tuple[dict, str]] = field(default_factory=list)
+    rejections_gatekeeper: list[dict[str, Any]] = field(default_factory=list)
+    rejections_correlation: list[tuple[dict, str]] = field(default_factory=list)
 
     # Final picks
-    final_picks: List[Dict[str, Any]] = field(default_factory=list)
+    final_picks: list[dict[str, Any]] = field(default_factory=list)
 
     # No-trades explanation (populated when final_picks is empty)
-    no_trades_explanation: Optional[Dict[str, Any]] = None
+    no_trades_explanation: Optional[dict[str, Any]] = None
 
     def to_formatted_string(self) -> str:
         """Convert decision log to human-readable output for agent."""
-        output = f"\n{'='*80}\n"
+        output = f"\n{'=' * 80}\n"
         output += f"📊 DECISION LOG: {self.symbol}\n"
-        output += f"{'='*80}\n"
+        output += f"{'=' * 80}\n"
 
         # Vol & Events
-        output += f"\n🔍 CONTEXT:\n"
+        output += "\n🔍 CONTEXT:\n"
         output += f"  Regime: {self.regime or 'Unknown'}\n"
         output += f"  Strategy Hint: {self.strategy_hint or 'None'}\n"
         output += f"  Blocking Events: {len(self.blocking_events)}\n"
@@ -436,7 +471,7 @@ class DecisionLog:
                 output += f"    ⚠️  {formatted}\n"
 
         # Candidates Flow
-        output += f"\n📈 CANDIDATES:\n"
+        output += "\n📈 CANDIDATES:\n"
         output += f"  Generated: {len(self.candidates_raw)}\n"
         output += f"  After Risk Gate: {len(self.candidates_after_risk_gate)}\n"
         output += f"  After Correlation: {len(self.candidates_after_correlation)}\n"
@@ -450,47 +485,51 @@ class DecisionLog:
                 output += f"  - {candidate.get('strategy', '?')} @ {candidate.get('strike_long', '?')}: {formatted_reason}\n"
 
         if self.rejections_correlation:
-            output += f"\n❌ CORRELATION REJECTIONS ({len(self.rejections_correlation)}):\n"
+            output += (
+                f"\n❌ CORRELATION REJECTIONS ({len(self.rejections_correlation)}):\n"
+            )
             for candidate, reason in self.rejections_correlation[:5]:
                 formatted_reason = format_reason_for_display(reason)
                 output += f"  - {candidate.get('strategy', '?')}: {formatted_reason}\n"
 
         # Final picks
         if self.final_picks:
-            output += f"\n✅ TOP PICKS:\n"
+            output += "\n✅ TOP PICKS:\n"
             for i, pick in enumerate(self.final_picks[:5], 1):
                 output += f"  {i}. {pick.get('strategy', '?')} (Exp: {pick.get('expiration', '?')})\n"
-                legs = pick.get('legs', [])
+                legs = pick.get("legs", [])
                 if legs:
                     for j, leg in enumerate(legs):
-                        side = leg.get('side', '?').upper()
-                        strike = leg.get('strike', '?')
-                        delta = leg.get('delta', 0)
+                        side = leg.get("side", "?").upper()
+                        strike = leg.get("strike", "?")
+                        delta = leg.get("delta", 0)
                         output += f"     {side} ${strike:.2f} | Δ {delta:.2f}\n"
                 output += f"     Cost: ${pick.get('cost', 0):.2f} | Max Profit: ${pick.get('max_profit', 0):.2f}\n\n"
         else:
             if self.blocking_events:
-                output += f"\n⚠️  No opportunities: Blocking events prevent trading.\n"
+                output += "\n⚠️  No opportunities: Blocking events prevent trading.\n"
             elif self.rejections_risk:
-                output += f"\n⚠️  No opportunities: All candidates rejected by risk gate.\n"
+                output += (
+                    "\n⚠️  No opportunities: All candidates rejected by risk gate.\n"
+                )
             elif self.rejections_correlation:
-                output += f"\n⚠️  No opportunities: All candidates rejected by correlation gate.\n"
+                output += "\n⚠️  No opportunities: All candidates rejected by correlation gate.\n"
             else:
-                output += f"\n⚠️  No opportunities: No candidates generated in window.\n"
+                output += "\n⚠️  No opportunities: No candidates generated in window.\n"
 
-        output += f"\n{'='*80}\n"
-        output += f"⚠️  Disclaimer: Informational only, not financial advice.\n"
-        output += f"{'='*80}\n"
+        output += f"\n{'=' * 80}\n"
+        output += "⚠️  Disclaimer: Informational only, not financial advice.\n"
+        output += f"{'=' * 80}\n"
 
         return output
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert decision log to dictionary format for API responses.
         """
         # Convert regime_details (VolatilityResult object) to dict if needed
         regime_details = self.regime_details
-        if regime_details and hasattr(regime_details, '__dataclass_fields__'):
+        if regime_details and hasattr(regime_details, "__dataclass_fields__"):
             regime_details = asdict(regime_details)
         elif regime_details and isinstance(regime_details, dict):
             regime_details = regime_details
@@ -508,13 +547,21 @@ class DecisionLog:
             "strategy_hint": self.strategy_hint,
             "event_policy": self.event_policy,
             "total_generated": len(self.candidates_raw),
-            "after_event_filter": 0 if self.event_policy == "TIGHT" else len(self.candidates_raw),
+            "after_event_filter": 0
+            if self.event_policy == "TIGHT"
+            else len(self.candidates_raw),
             "after_risk_gate": len(self.candidates_after_risk_gate),
-            "after_gatekeeper": len([c for c in self.candidates_after_risk_gate if any(
-                rc["candidate"].get("symbol") == c.get("symbol") and
-                rc["candidate"].get("strategy") == c.get("strategy")
-                for rc in self.rejections_gatekeeper
-            ) == False]),
+            "after_gatekeeper": len(
+                [
+                    c
+                    for c in self.candidates_after_risk_gate
+                    if not any(
+                        rc["candidate"].get("symbol") == c.get("symbol")
+                        and rc["candidate"].get("strategy") == c.get("strategy")
+                        for rc in self.rejections_gatekeeper
+                    )
+                ]
+            ),
             "after_correlation": len(self.candidates_after_correlation),
             "final_picks": self.final_picks,
             "risk_rejections": [
@@ -539,9 +586,11 @@ class DecisionLog:
                 }
                 for rej in self.rejections_correlation
             ],
-            "blocking_events_str": "; ".join([
-                format_event_for_display(evt) for evt in self.blocking_events
-            ]) if self.blocking_events else "None",
+            "blocking_events_str": "; ".join(
+                [format_event_for_display(evt) for evt in self.blocking_events]
+            )
+            if self.blocking_events
+            else "None",
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -550,7 +599,8 @@ class DecisionLog:
 # Vol & Events Context
 # ============================================================================
 
-def vol_and_events_context(symbol: str, dte: int) -> Dict[str, Any]:
+
+def vol_and_events_context(symbol: str, dte: int) -> dict[str, Any]:
     """
     Determine vol regime and check for blocking events.
 
@@ -610,6 +660,7 @@ def vol_and_events_context(symbol: str, dte: int) -> Dict[str, Any]:
 # Main Orchestration
 # ============================================================================
 
+
 def policy_to_limit(mode: str) -> float:
     """Map policy mode to max risk per trade."""
     limits = {
@@ -625,7 +676,7 @@ def full_scan_with_orchestration(
     start_date: str,
     end_date: str,
     top_n: int = 5,
-    portfolio: Optional[List[Dict[str, Any]]] = None,
+    portfolio: Optional[list[dict[str, Any]]] = None,
     policy_mode: str = "tight",
     portfolio_value: float = 100000.0,
 ) -> DecisionLog:
@@ -697,7 +748,9 @@ def full_scan_with_orchestration(
 
         if not candidates:
             logger.info(f"No candidates generated for {symbol}")
-            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
+            log.no_trades_explanation = _build_no_trades_explanation(
+                log, policy_mode, max_risk
+            )
             return log
 
         # ====================================================================
@@ -710,7 +763,9 @@ def full_scan_with_orchestration(
             logger.warning(f"Event in TIGHT window for {symbol}—no trades allowed")
             log.candidates_raw = []
             log.final_picks = []
-            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
+            log.no_trades_explanation = _build_no_trades_explanation(
+                log, policy_mode, max_risk
+            )
             return log
 
         risk_engine = RiskEngine(max_risk_per_trade=max_risk)
@@ -731,7 +786,7 @@ def full_scan_with_orchestration(
             rejected, reason = risk_engine.should_reject_trade(
                 trade_proposal,
                 portfolio,
-                market_context, 
+                market_context,
             )
 
             if rejected:
@@ -745,7 +800,9 @@ def full_scan_with_orchestration(
         if not accepted_after_risk:
             logger.info(f"No candidates passed risk gate for {symbol}")
             log.final_picks = []
-            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
+            log.no_trades_explanation = _build_no_trades_explanation(
+                log, policy_mode, max_risk
+            )
             return log
 
         # ====================================================================
@@ -773,23 +830,27 @@ def full_scan_with_orchestration(
                 scored_candidates.append(candidate)
             else:
                 # Track gatekeeper rejection
-                log.rejections_gatekeeper.append({
-                    "candidate": {
-                        "symbol": candidate.get("symbol", symbol),
-                        "strategy": candidate.get("strategy", "UNKNOWN"),
-                        "expiration": candidate.get("expiration", ""),
-                    },
-                    "score": score.total_score,
-                    "threshold": 70.0,
-                    "breakdown": score.score_breakdown,
-                    "reason": score.rejection_reason,
-                })
+                log.rejections_gatekeeper.append(
+                    {
+                        "candidate": {
+                            "symbol": candidate.get("symbol", symbol),
+                            "strategy": candidate.get("strategy", "UNKNOWN"),
+                            "expiration": candidate.get("expiration", ""),
+                        },
+                        "score": score.total_score,
+                        "threshold": 70.0,
+                        "breakdown": score.score_breakdown,
+                        "reason": score.rejection_reason,
+                    }
+                )
                 logger.debug(f"Gatekeeper rejected {symbol}: {score.rejection_reason}")
 
         if not scored_candidates:
             logger.info(f"No candidates passed gatekeeper for {symbol}")
             log.final_picks = []
-            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
+            log.no_trades_explanation = _build_no_trades_explanation(
+                log, policy_mode, max_risk
+            )
             return log
 
         # ====================================================================
@@ -808,7 +869,9 @@ def full_scan_with_orchestration(
         if not after_correlation:
             logger.info(f"No candidates passed correlation gate for {symbol}")
             log.final_picks = []
-            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
+            log.no_trades_explanation = _build_no_trades_explanation(
+                log, policy_mode, max_risk
+            )
             return log
 
         # ====================================================================
@@ -818,8 +881,14 @@ def full_scan_with_orchestration(
         final = sorted(
             after_correlation,
             key=lambda x: (
-                -x.get("gatekeeper_score", 0),  # Higher score first (negate for descending)
-                -(x.get("max_profit", 0) / x.get("cost", 1) if x.get("cost", 0) > 0 else 0),
+                -x.get(
+                    "gatekeeper_score", 0
+                ),  # Higher score first (negate for descending)
+                -(
+                    x.get("max_profit", 0) / x.get("cost", 1)
+                    if x.get("cost", 0) > 0
+                    else 0
+                ),
             ),
         )
 
@@ -827,9 +896,11 @@ def full_scan_with_orchestration(
 
         # Build pipeline journey for each final pick
         from risk_engine import SECTOR_MAP
+
         max_corr_seen = 0.0
         for rej_candidate, rej_reason in log.rejections_correlation:
             from reason_codes import parse_reason_code, is_structured_reason
+
             if is_structured_reason(rej_reason):
                 parsed = parse_reason_code(rej_reason)
                 corr_val = parsed.get("context", {}).get("corr", 0.0)
@@ -848,7 +919,9 @@ def full_scan_with_orchestration(
 
         log_context_for_pipeline = {
             "regime": log.regime,
-            "regime_details": log.regime_details if isinstance(log.regime_details, dict) else {},
+            "regime_details": log.regime_details
+            if isinstance(log.regime_details, dict)
+            else {},
             "blocking_events": log.blocking_events,
             "event_policy": log.event_policy,
             "max_risk": max_risk,
@@ -878,10 +951,11 @@ def full_scan_with_orchestration(
             f"correlation: {len(after_correlation)})"
         )
 
-
         # Build no-trades explanation when needed
         if not log.final_picks:
-            log.no_trades_explanation = _build_no_trades_explanation(log, policy_mode, max_risk)
+            log.no_trades_explanation = _build_no_trades_explanation(
+                log, policy_mode, max_risk
+            )
         else:
             log.no_trades_explanation = None
 

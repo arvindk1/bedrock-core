@@ -22,8 +22,17 @@ def _run_async(coro):
 
 def setup_module():
     """Mock heavy dependencies before importing app."""
-    for mod_name in ("strands", "strands.tools", "strands.models", "bedrock_agentcore", "bedrock_agentcore.runtime", "dotenv",
-                     "options_scanner", "orchestrator", "risk_engine"):
+    for mod_name in (
+        "strands",
+        "strands.tools",
+        "strands.models",
+        "bedrock_agentcore",
+        "bedrock_agentcore.runtime",
+        "dotenv",
+        "options_scanner",
+        "orchestrator",
+        "risk_engine",
+    ):
         _original_modules[mod_name] = sys.modules.get(mod_name)
 
     mock_strands = MagicMock()
@@ -45,6 +54,7 @@ def setup_module():
     sys.modules["risk_engine"] = MagicMock()
 
     import agent.tools as tools
+
     importlib.reload(tools)
 
 

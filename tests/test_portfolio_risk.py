@@ -1,8 +1,9 @@
 """Tests for GET /api/portfolio/risk and GET /api/portfolio/positions endpoints."""
+
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event as sa_event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -11,13 +12,16 @@ from sqlalchemy.pool import StaticPool
 # In-memory DB fixture (StaticPool keeps the same connection so :memory: works)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def in_memory_session_factory():
     """
     Create an in-memory SQLite DB with a StaticPool (shared connection) so
     that every SessionLocal() call within a test sees the same data.
     """
-    import sys, os
+    import sys
+    import os
+
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
     from db.models import Base, Portfolio, Position
@@ -25,7 +29,7 @@ def in_memory_session_factory():
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,   # <-- key: reuse the same in-memory connection
+        poolclass=StaticPool,  # <-- key: reuse the same in-memory connection
     )
     Base.metadata.create_all(bind=engine)
     TestSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -152,15 +156,19 @@ def in_memory_session_factory():
 def client_with_db(in_memory_session_factory):
     """Return a TestClient with the server's SessionLocal patched to the in-memory DB."""
     from ui.server import app
+
     # Also patch seed() so the auto-seed path doesn't open the real DB
-    with patch("ui.server.SessionLocal", in_memory_session_factory), \
-         patch("ui.server.seed", return_value=None):
+    with (
+        patch("ui.server.SessionLocal", in_memory_session_factory),
+        patch("ui.server.seed", return_value=None),
+    ):
         yield TestClient(app)
 
 
 # ---------------------------------------------------------------------------
 # Tests: GET /api/portfolio/risk
 # ---------------------------------------------------------------------------
+
 
 class TestPortfolioRiskEndpoint:
     """Tests for GET /api/portfolio/risk with live DB data."""
@@ -258,6 +266,7 @@ class TestPortfolioRiskEndpoint:
     def test_portfolio_risk_max_risk_per_trade_from_config(self, client_with_db):
         """max_risk_per_trade must come from APP_CONFIG policy_limits.tight."""
         from ui.server import APP_CONFIG
+
         resp = client_with_db.get("/api/portfolio/risk")
         assert resp.status_code == 200
         data = resp.json()
@@ -285,6 +294,7 @@ class TestPortfolioRiskEndpoint:
 # Tests: GET /api/portfolio/positions
 # ---------------------------------------------------------------------------
 
+
 class TestPortfolioPositionsEndpoint:
     """Tests for GET /api/portfolio/positions."""
 
@@ -309,17 +319,33 @@ class TestPortfolioPositionsEndpoint:
     def test_portfolio_positions_required_fields(self, client_with_db):
         """Each position must contain the required display fields."""
         required_fields = {
-            "id", "symbol", "strategy", "quantity", "cost_basis",
-            "current_mark", "unrealized_pnl", "max_profit", "max_loss",
-            "delta", "gamma", "theta", "vega", "sector", "is_credit",
-            "expiration_date", "days_held", "status",
+            "id",
+            "symbol",
+            "strategy",
+            "quantity",
+            "cost_basis",
+            "current_mark",
+            "unrealized_pnl",
+            "max_profit",
+            "max_loss",
+            "delta",
+            "gamma",
+            "theta",
+            "vega",
+            "sector",
+            "is_credit",
+            "expiration_date",
+            "days_held",
+            "status",
         }
         resp = client_with_db.get("/api/portfolio/positions")
         assert resp.status_code == 200
         data = resp.json()
         for pos in data:
             missing = required_fields - set(pos.keys())
-            assert not missing, f"Position {pos.get('symbol')} missing fields: {missing}"
+            assert not missing, (
+                f"Position {pos.get('symbol')} missing fields: {missing}"
+            )
 
     def test_portfolio_positions_numeric_fields_rounded(self, client_with_db):
         """cost_basis, current_mark, unrealized_pnl must be floats rounded to 2 dp."""

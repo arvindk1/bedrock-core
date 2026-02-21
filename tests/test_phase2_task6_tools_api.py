@@ -5,9 +5,7 @@ Tests for the three-tool surface (scan_options, scan_options_with_strategy, chec
 Also tests DecisionLog and orchestrator stubs.
 """
 
-import pytest
-from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import json
 
 import sys
@@ -22,6 +20,7 @@ from orchestrator import DecisionLog, vol_and_events_context, policy_to_limit
 # ============================================================================
 # TOOL 1: scan_options (Legacy/Simple)
 # ============================================================================
+
 
 class TestScanOptionsLegacy:
     """Test the simple scan_options tool (Phase 1 behavior)."""
@@ -45,6 +44,7 @@ class TestScanOptionsLegacy:
 # TOOL 2: scan_options_with_strategy (Orchestrated)
 # ============================================================================
 
+
 class TestScanOptionsWithStrategy:
     """Test the orchestrated scan_options_with_strategy tool."""
 
@@ -60,35 +60,28 @@ class TestScanOptionsWithStrategy:
     def test_accepts_empty_portfolio(self):
         """Tool handles empty portfolio (default)."""
         result = scan_options_with_strategy(
-            "AAPL",
-            "2026-03-01",
-            "2026-06-01",
-            portfolio_json="[]"
+            "AAPL", "2026-03-01", "2026-06-01", portfolio_json="[]"
         )
         assert isinstance(result, str)
 
     def test_rejects_invalid_portfolio_json(self):
         """Tool rejects malformed portfolio JSON."""
         result = scan_options_with_strategy(
-            "AAPL",
-            "2026-03-01",
-            "2026-06-01",
-            portfolio_json="NOT_JSON"
+            "AAPL", "2026-03-01", "2026-06-01", portfolio_json="NOT_JSON"
         )
         assert "Error" in result
         assert "JSON" in result
 
     def test_accepts_valid_portfolio_json(self):
         """Tool accepts valid portfolio JSON."""
-        portfolio = json.dumps([
-            {"symbol": "MSFT", "max_loss": 500},
-            {"symbol": "NVDA", "max_loss": 300},
-        ])
+        portfolio = json.dumps(
+            [
+                {"symbol": "MSFT", "max_loss": 500},
+                {"symbol": "NVDA", "max_loss": 300},
+            ]
+        )
         result = scan_options_with_strategy(
-            "AAPL",
-            "2026-03-01",
-            "2026-06-01",
-            portfolio_json=portfolio
+            "AAPL", "2026-03-01", "2026-06-01", portfolio_json=portfolio
         )
         assert isinstance(result, str)
 
@@ -96,26 +89,20 @@ class TestScanOptionsWithStrategy:
         """Tool accepts all policy modes."""
         for mode in ["tight", "moderate", "aggressive"]:
             result = scan_options_with_strategy(
-                "SPY",
-                "2026-03-01",
-                "2026-06-01",
-                policy_mode=mode
+                "SPY", "2026-03-01", "2026-06-01", policy_mode=mode
             )
             assert isinstance(result, str)
 
     def test_bad_date_range_returns_error(self):
         """Tool rejects inverted date ranges."""
-        result = scan_options_with_strategy(
-            "AAPL",
-            "2026-06-01",
-            "2026-03-01"
-        )
+        result = scan_options_with_strategy("AAPL", "2026-06-01", "2026-03-01")
         assert isinstance(result, str)  # Should return error string, not crash
 
 
 # ============================================================================
 # TOOL 3: check_trade_risk
 # ============================================================================
+
 
 class TestCheckTradeRisk:
     """Test the check_trade_risk tool."""
@@ -138,26 +125,29 @@ class TestCheckTradeRisk:
 
     def test_rejection_message_format(self):
         """Rejection includes X and reason."""
-        result = check_trade_risk("AAPL", "BULL_CALL_DEBIT_SPREAD", 10000.0, portfolio_json="[]")
+        result = check_trade_risk(
+            "AAPL", "BULL_CALL_DEBIT_SPREAD", 10000.0, portfolio_json="[]"
+        )
         if "REJECTED" in result:
             assert "❌" in result or "REJECTED" in result
 
     def test_handles_invalid_portfolio_json(self):
         """Tool rejects malformed portfolio JSON."""
-        result = check_trade_risk("AAPL", "BULL_CALL_DEBIT_SPREAD", 1000.0, portfolio_json="BAD")
+        result = check_trade_risk(
+            "AAPL", "BULL_CALL_DEBIT_SPREAD", 1000.0, portfolio_json="BAD"
+        )
         assert "Error" in result
 
     def test_handles_portfolio_context(self):
         """Tool accepts portfolio context for concentration checks."""
-        portfolio = json.dumps([
-            {"symbol": "AAPL", "max_loss": 800, "sector": "Technology"},
-            {"symbol": "MSFT", "max_loss": 700, "sector": "Technology"},
-        ])
+        portfolio = json.dumps(
+            [
+                {"symbol": "AAPL", "max_loss": 800, "sector": "Technology"},
+                {"symbol": "MSFT", "max_loss": 700, "sector": "Technology"},
+            ]
+        )
         result = check_trade_risk(
-            "AAPL",
-            "BULL_CALL_DEBIT_SPREAD",
-            500.0,
-            portfolio_json=portfolio
+            "AAPL", "BULL_CALL_DEBIT_SPREAD", 500.0, portfolio_json=portfolio
         )
         assert isinstance(result, str)
 
@@ -165,6 +155,7 @@ class TestCheckTradeRisk:
 # ============================================================================
 # DecisionLog Artifact
 # ============================================================================
+
 
 class TestDecisionLog:
     """Test DecisionLog dataclass and formatting."""
@@ -202,7 +193,11 @@ class TestDecisionLog:
             end_date="2026-06-01",
         )
         log.blocking_events = [
-            {"type": "earnings", "date": "2026-02-18", "description": "Earnings in 2 days"},
+            {
+                "type": "earnings",
+                "date": "2026-02-18",
+                "description": "Earnings in 2 days",
+            },
         ]
         output = log.to_formatted_string()
         assert "Earnings" in output or "Blocking" in output
@@ -243,6 +238,7 @@ class TestDecisionLog:
 # Orchestrator Helpers
 # ============================================================================
 
+
 class TestOrchestratorHelpers:
     """Test orchestrator helper functions."""
 
@@ -273,6 +269,7 @@ class TestOrchestratorHelpers:
 # Tool Integration Tests
 # ============================================================================
 
+
 class TestToolIntegration:
     """Test interactions between tools."""
 
@@ -280,20 +277,14 @@ class TestToolIntegration:
         """User flow: check trade risk, then scan for opportunities."""
         # First: check if a trade is acceptable
         risk_result = check_trade_risk(
-            "AAPL",
-            "BULL_CALL_DEBIT_SPREAD",
-            1000.0,
-            portfolio_json="[]"
+            "AAPL", "BULL_CALL_DEBIT_SPREAD", 1000.0, portfolio_json="[]"
         )
         assert isinstance(risk_result, str)
 
         # Second: if approved, scan for opportunities
         if "APPROVED" in risk_result:
             scan_result = scan_options_with_strategy(
-                "AAPL",
-                "2026-03-01",
-                "2026-06-01",
-                portfolio_json="[]"
+                "AAPL", "2026-03-01", "2026-06-01", portfolio_json="[]"
             )
             assert isinstance(scan_result, str)
 

@@ -2,7 +2,6 @@
 Tests for Standardized Reason Codes Utility
 """
 
-import pytest
 import sys
 import os
 
@@ -15,7 +14,6 @@ from reason_codes import (
     validate_reason_code,
     extract_reason_summary,
     GATE_RISK,
-    GATE_EVENT,
     GATE_GATEKEEP,
     GATE_CORRELATION,
     Rules,
@@ -37,7 +35,12 @@ class TestFormatReasonCode:
         code = format_reason_code(
             gate=GATE_RISK,
             rule=Rules.Risk.MAX_LOSS_EXCEEDED,
-            context={"symbol": "AAPL", "proposed": 1500, "limit": 1000, "excess_pct": 50},
+            context={
+                "symbol": "AAPL",
+                "proposed": 1500,
+                "limit": 1000,
+                "excess_pct": 50,
+            },
         )
         assert "RISK_REJECT|rule=MAX_LOSS_EXCEEDED" in code
         assert "proposed=1500" in code
@@ -48,7 +51,9 @@ class TestFormatReasonCode:
         assert code == "RISK_REJECT|rule=NO_MAX_LOSS"
 
     def test_format_with_empty_context(self):
-        code = format_reason_code(gate=GATE_RISK, rule=Rules.Risk.NO_MAX_LOSS, context={})
+        code = format_reason_code(
+            gate=GATE_RISK, rule=Rules.Risk.NO_MAX_LOSS, context={}
+        )
         assert code == "RISK_REJECT|rule=NO_MAX_LOSS"
 
     def test_format_with_boolean_values(self):
@@ -72,7 +77,12 @@ class TestFormatReasonCode:
         code = format_reason_code(
             gate=GATE_CORRELATION,
             rule=Rules.Correlation.CORRELATION_BREACH,
-            context={"candidate": "AAPL", "vs": "MSFT", "corr": 0.78, "threshold": 0.70},
+            context={
+                "candidate": "AAPL",
+                "vs": "MSFT",
+                "corr": 0.78,
+                "threshold": 0.70,
+            },
         )
         assert "CORR_REJECT|rule=CORRELATION_BREACH" in code
         assert "candidate=AAPL" in code
@@ -127,9 +137,13 @@ class TestParseReasonCode:
     def test_parse_roundtrip(self):
         """Format → Parse → Format should be identical"""
         original_context = {"symbol": "AAPL", "proposed": 1500, "limit": 1000}
-        code = format_reason_code(GATE_RISK, Rules.Risk.MAX_LOSS_EXCEEDED, original_context)
+        code = format_reason_code(
+            GATE_RISK, Rules.Risk.MAX_LOSS_EXCEEDED, original_context
+        )
         parsed = parse_reason_code(code)
-        code2 = format_reason_code(GATE_RISK, Rules.Risk.MAX_LOSS_EXCEEDED, parsed["context"])
+        code2 = format_reason_code(
+            GATE_RISK, Rules.Risk.MAX_LOSS_EXCEEDED, parsed["context"]
+        )
         assert code == code2
 
 
@@ -137,7 +151,10 @@ class TestIsStructuredReason:
     """Test detection of structured vs free-text reasons"""
 
     def test_structured_format_detected(self):
-        assert is_structured_reason("RISK_REJECT|rule=MAX_LOSS_EXCEEDED|proposed=1500") is True
+        assert (
+            is_structured_reason("RISK_REJECT|rule=MAX_LOSS_EXCEEDED|proposed=1500")
+            is True
+        )
 
     def test_free_text_not_detected(self):
         assert is_structured_reason("Rejected: max loss exceeds limit") is False

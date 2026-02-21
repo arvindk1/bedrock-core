@@ -4,7 +4,6 @@ Tests for vol_engine.py — VolEngine core structure & historical volatility.
 
 import sys
 import os
-from datetime import datetime
 from unittest.mock import patch, MagicMock
 
 import numpy as np
@@ -20,6 +19,7 @@ from vol_engine import VolEngine, VolatilityResult, VolatilityModel, VolRegime
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_price_series(n=252, start=100, annual_vol=0.25):
     """Generate synthetic price series with known volatility."""
@@ -44,6 +44,7 @@ def _mock_yf_history(prices):
 # TestVolEngineInit
 # ---------------------------------------------------------------------------
 
+
 class TestVolEngineInit:
     def test_default_construction(self):
         engine = VolEngine()
@@ -59,6 +60,7 @@ class TestVolEngineInit:
 # ---------------------------------------------------------------------------
 # TestHistoricalVolatility
 # ---------------------------------------------------------------------------
+
 
 class TestHistoricalVolatility:
     @patch("vol_engine.yf.Ticker")
@@ -92,6 +94,7 @@ class TestHistoricalVolatility:
 # TestVolRegime
 # ---------------------------------------------------------------------------
 
+
 class TestVolRegime:
     def test_regime_enum_values(self):
         assert VolRegime.LOW.value == "low"
@@ -102,6 +105,7 @@ class TestVolRegime:
 # ---------------------------------------------------------------------------
 # TestGARCH
 # ---------------------------------------------------------------------------
+
 
 class TestGARCH:
     @patch("vol_engine.yf.Ticker")
@@ -136,6 +140,7 @@ class TestGARCH:
 # TestEWMA
 # ---------------------------------------------------------------------------
 
+
 class TestEWMA:
     @patch("vol_engine.yf.Ticker")
     def test_ewma_calculation(self, mock_ticker_cls):
@@ -156,6 +161,7 @@ class TestEWMA:
 # TestHybrid
 # ---------------------------------------------------------------------------
 
+
 class TestHybrid:
     @patch("vol_engine.yf.Ticker")
     def test_hybrid_uses_multiple_models(self, mock_ticker_cls):
@@ -175,6 +181,7 @@ class TestHybrid:
 # TestRegimeDetection
 # ---------------------------------------------------------------------------
 
+
 class TestRegimeDetection:
     @patch("vol_engine.yf.Ticker")
     def test_detect_regime_returns_valid_enum(self, mock_ticker_cls):
@@ -193,6 +200,7 @@ class TestRegimeDetection:
 # ---------------------------------------------------------------------------
 # TestIVRank
 # ---------------------------------------------------------------------------
+
 
 class TestIVRank:
     @patch("vol_engine.yf.Ticker")
@@ -226,6 +234,7 @@ class TestIVRank:
 # TestExpectedMove
 # ---------------------------------------------------------------------------
 
+
 class TestExpectedMove:
     @patch("vol_engine.yf.Ticker")
     def test_expected_move_structure(self, mock_ticker_cls):
@@ -250,7 +259,11 @@ class TestExpectedMove:
         mock_ticker_cls.return_value = mock_ticker
 
         engine = VolEngine()
-        move_68 = engine.calculate_expected_move("SPY", current_price=200, days=45, confidence=0.68)
-        move_95 = engine.calculate_expected_move("SPY", current_price=200, days=45, confidence=0.95)
+        move_68 = engine.calculate_expected_move(
+            "SPY", current_price=200, days=45, confidence=0.68
+        )
+        move_95 = engine.calculate_expected_move(
+            "SPY", current_price=200, days=45, confidence=0.95
+        )
 
         assert move_95["expected_move_dollars"] > move_68["expected_move_dollars"]

@@ -8,7 +8,7 @@ Filters for professional-grade setups (DTE 35-50, Delta 30-50, Liquidity).
 import math
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Optional, Any
 
 import pandas as pd
 import yfinance as yf
@@ -25,10 +25,11 @@ MIN_DTE = 30
 MAX_DTE = 60  # Sweet spot for theta/gamma balance
 TARGET_DELTA_MIN = 0.25
 TARGET_DELTA_MAX = 0.55
-# Loosened liquidity constraints for testing/demo purposes 
+# Loosened liquidity constraints for testing/demo purposes
 # (In production, these would be externalized to config and set higher)
 MIN_LIQUIDITY_OI = 10
 MIN_LIQUIDITY_VOL = 10
+
 
 class OptionsScanner:
     """
@@ -40,7 +41,9 @@ class OptionsScanner:
         self.vol_engine = VolEngine()
         self.market_data = MarketData()
 
-    def scan_opportunities(self, symbol: str, strategy_preference: Optional[str] = None) -> List[Dict]:
+    def scan_opportunities(
+        self, symbol: str, strategy_preference: Optional[str] = None
+    ) -> list[dict]:
         """
         Scan for option opportunities based on market regime.
 
@@ -61,13 +64,19 @@ class OptionsScanner:
 
         try:
             regime = self.vol_engine.detect_regime(symbol)
-            vol_result = self.vol_engine.calculate_volatility(symbol, model=VolatilityModel.HYBRID)
+            vol_result = self.vol_engine.calculate_volatility(
+                symbol, model=VolatilityModel.HYBRID
+            )
         except Exception as e:
-            logger.warning(f"Vol regime detection failed for {symbol}: {e}. Using neutral default.")
+            logger.warning(
+                f"Vol regime detection failed for {symbol}: {e}. Using neutral default."
+            )
             regime = VolRegime.MEDIUM
+
             # Safe default: treat as medium vol if calculation fails
             class SafeVolResult:
                 annual_volatility = 0.30
+
             vol_result = SafeVolResult()
 
         current_price = self.market_data.get_current_price(symbol)
@@ -81,11 +90,13 @@ class OptionsScanner:
             if regime == VolRegime.HIGH:
                 strategy_to_scan = "CREDIT_SPREAD"  # Sell expensive premium
             elif regime == VolRegime.LOW:
-                strategy_to_scan = "DEBIT_SPREAD"   # Buy cheap premium
+                strategy_to_scan = "DEBIT_SPREAD"  # Buy cheap premium
             else:
                 strategy_to_scan = "VERTICAL_SPREAD"  # Neutral
 
-        logger.info(f"🔎 Scanning {symbol}: Regime={regime.value}, Vol={vol_result.annual_volatility:.1%}, Strategy={strategy_to_scan}")
+        logger.info(
+            f"🔎 Scanning {symbol}: Regime={regime.value}, Vol={vol_result.annual_volatility:.1%}, Strategy={strategy_to_scan}"
+        )
 
         # 2. Fetch Chains
         expiry = self._find_optimal_expiration(symbol)
@@ -104,7 +115,9 @@ class OptionsScanner:
         if "SPREAD" in strategy_to_scan:
             # Phase-2: Generates call spreads (vertical spreads)
             # TODO: Route strategy_to_scan to appropriate generator (call vs put)
-            candidates = self._find_vertical_spreads(symbol, current_price, chain, expiry, strategy_to_scan)
+            candidates = self._find_vertical_spreads(
+                symbol, current_price, chain, expiry, strategy_to_scan
+            )
         elif "CONDOR" in strategy_to_scan:
             # Placeholder for Condor logic (Phase 2.5+)
             pass
@@ -145,11 +158,13 @@ class OptionsScanner:
             logger.warning(f"Using fallback expiration {fallback} for {symbol}")
             return fallback
 
-    def _find_vertical_spreads(self, symbol: str, spot: float, chain: Any, expiry: str, strategy: str) -> List[Dict]:
+    def _find_vertical_spreads(
+        self, symbol: str, spot: float, chain: Any, expiry: str, strategy: str
+    ) -> list[dict]:
         """Find vertical spreads matching delta criteria."""
         calls = chain.calls
         puts = chain.puts
-        r = 0.04 # Risk free
+        r = 0.04  # Risk free
 
         opportunities = []
 
@@ -163,10 +178,18 @@ class OptionsScanner:
 
         # Calculate Greeks for all first? Or just iterate.
         # Check liquidity first
-        calls = calls[(calls["volume"] >= MIN_LIQUIDITY_VOL) & (calls["openInterest"] >= MIN_LIQUIDITY_OI)]
-        puts = puts[(puts["volume"] >= MIN_LIQUIDITY_VOL) & (puts["openInterest"] >= MIN_LIQUIDITY_OI)]
+        calls = calls[
+            (calls["volume"] >= MIN_LIQUIDITY_VOL)
+            & (calls["openInterest"] >= MIN_LIQUIDITY_OI)
+        ]
+        puts = puts[
+            (puts["volume"] >= MIN_LIQUIDITY_VOL)
+            & (puts["openInterest"] >= MIN_LIQUIDITY_OI)
+        ]
 
-        days_to = (datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()).days
+        days_to = (
+            datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()
+        ).days
         # T uses calendar days (365) for Black-Scholes option pricing
         # Note: Vol engine uses trading days (252) for annualized volatility—different conventions are correct
         T = days_to / 365.0
@@ -177,17 +200,20 @@ class OptionsScanner:
             # deep ITM = delta 1, ATM = 0.5.
             # We need greeks.
             iv = long_leg.get("impliedVolatility", 0)
-            if iv == 0: continue
+            if iv == 0:
+                continue
 
             greeks = self._calculate_greeks(spot, long_leg["strike"], T, r, iv, "call")
             delta = greeks["delta"]
 
-            if 0.40 <= delta <= 0.60: # ATM/ITM for Debit Spread Anchor
+            if 0.40 <= delta <= 0.60:  # ATM/ITM for Debit Spread Anchor
                 # Find Short Leg (OTM, lower delta)
                 for _, short_leg in calls.iterrows():
                     if short_leg["strike"] > long_leg["strike"]:
                         iv_s = short_leg.get("impliedVolatility", 0)
-                        greeks_s = self._calculate_greeks(spot, short_leg["strike"], T, r, iv_s, "call")
+                        greeks_s = self._calculate_greeks(
+                            spot, short_leg["strike"], T, r, iv_s, "call"
+                        )
 
                         if 0.20 <= greeks_s["delta"] <= 0.35:
                             # Valid Debit Spread Candidate
@@ -208,7 +234,9 @@ class OptionsScanner:
                                 "open_interest": int(long_leg.get("openInterest", 0)),
                                 "volume": int(long_leg.get("volume", 0)),
                                 "last_price": float(long_leg.get("lastPrice", 0)),
-                                "implied_volatility": float(long_leg.get("impliedVolatility", 0)),
+                                "implied_volatility": float(
+                                    long_leg.get("impliedVolatility", 0)
+                                ),
                             }
 
                             short_leg_enriched = {
@@ -222,19 +250,29 @@ class OptionsScanner:
                                 "open_interest": int(short_leg.get("openInterest", 0)),
                                 "volume": int(short_leg.get("volume", 0)),
                                 "last_price": float(short_leg.get("lastPrice", 0)),
-                                "implied_volatility": float(short_leg.get("impliedVolatility", 0)),
+                                "implied_volatility": float(
+                                    short_leg.get("impliedVolatility", 0)
+                                ),
                             }
 
                             # ============================================================
                             # SANITY CHECK: Drop candidates with garbage quotes (0/NaN bid/ask)
                             # yfinance can return 0 or NaN for illiquid options
                             # ============================================================
-                            if (long_leg_enriched["bid"] <= 0 or long_leg_enriched["ask"] <= 0 or
-                                short_leg_enriched["bid"] <= 0 or short_leg_enriched["ask"] <= 0):
-                                logger.debug(f"Skipping {symbol} spread: garbage quotes (bid/ask = 0 or missing)")
+                            if (
+                                long_leg_enriched["bid"] <= 0
+                                or long_leg_enriched["ask"] <= 0
+                                or short_leg_enriched["bid"] <= 0
+                                or short_leg_enriched["ask"] <= 0
+                            ):
+                                logger.debug(
+                                    f"Skipping {symbol} spread: garbage quotes (bid/ask = 0 or missing)"
+                                )
                                 continue
 
-                            net_debit = long_leg["ask"] - short_leg["bid"]  # Conservative
+                            net_debit = (
+                                long_leg["ask"] - short_leg["bid"]
+                            )  # Conservative
                             details = {
                                 "symbol": symbol,
                                 "strategy": "BULL_CALL_DEBIT_SPREAD",
@@ -245,14 +283,19 @@ class OptionsScanner:
                                 "spread_width": width,  # Explicit for clarity
                                 "cost": net_debit,
                                 "net_debit": net_debit,
-                                "max_loss": net_debit * 100,  # Contract multiplier (100 shares/contract)
+                                "max_loss": net_debit
+                                * 100,  # Contract multiplier (100 shares/contract)
                                 "max_profit": width - net_debit,
-                                "breakeven": long_leg["strike"] + net_debit,  # For debit calls
+                                "breakeven": long_leg["strike"]
+                                + net_debit,  # For debit calls
                                 "dte": days_to,
                                 "description": f"Long {long_leg['strike']} / Short {short_leg['strike']} Call Spread",
                             }
                             # Basic filtering: Risk/Reward
-                            if details["cost"] > 0 and details["max_profit"] / details["cost"] > 1.5:
+                            if (
+                                details["cost"] > 0
+                                and details["max_profit"] / details["cost"] > 1.5
+                            ):
                                 opportunities.append(details)
 
         return opportunities
@@ -264,10 +307,6 @@ class OptionsScanner:
 
         sqrt_T = math.sqrt(T)
         d1 = (math.log(S / K) + (r + sigma**2 / 2) * T) / (sigma * sqrt_T)
-        d2 = d1 - sigma * sqrt_T
-
-        n_d1 = norm.pdf(d1)
-
         if option_type == "call":
             delta = norm.cdf(d1)
         else:
@@ -280,11 +319,12 @@ class OptionsScanner:
 # PHASE 2: generate_candidates (raw, no risk gating)
 # ============================================================================
 
+
 def generate_candidates(
     symbol: str,
     start_date: str,
     end_date: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Generate raw candidate spreads within expiration window (NO risk gating).
 
@@ -331,7 +371,9 @@ def generate_candidates(
                 continue
 
         if not valid_expirations:
-            logger.warning(f"No expirations for {symbol} between {start_date} and {end_date}")
+            logger.warning(
+                f"No expirations for {symbol} between {start_date} and {end_date}"
+            )
             return []
 
         # Scan each expiration
@@ -344,8 +386,12 @@ def generate_candidates(
                 if chain is None:
                     continue
 
-                dte = (datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()).days
-                spreads = scanner._find_vertical_spreads(symbol, current_price, chain, expiry, "DEBIT_SPREAD")
+                dte = (
+                    datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()
+                ).days
+                spreads = scanner._find_vertical_spreads(
+                    symbol, current_price, chain, expiry, "DEBIT_SPREAD"
+                )
 
                 for spread in spreads:
                     # Add computed fields for gating
@@ -372,13 +418,14 @@ def generate_candidates(
 # PHASE 1: find_cheapest_options (simple wrapper with risk gating)
 # ============================================================================
 
+
 def find_cheapest_options(
     symbol: str,
     start_date: str,
     end_date: str,
     top_n: int = 5,
-    portfolio: Optional[List[Dict[str, Any]]] = None,
-    market_context: Optional[Dict[str, Any]] = None,
+    portfolio: Optional[list[dict[str, Any]]] = None,
+    market_context: Optional[dict[str, Any]] = None,
 ) -> str:
     """
     Find and rank the best liquid options contracts within expiration window.
@@ -430,7 +477,9 @@ def find_cheapest_options(
                 valid_expirations.append(exp)
 
         if not valid_expirations:
-            return f"No expirations found for {symbol} between {start_date} and {end_date}"
+            return (
+                f"No expirations found for {symbol} between {start_date} and {end_date}"
+            )
 
         # Scan each expiration
         for expiry in valid_expirations:
@@ -438,8 +487,12 @@ def find_cheapest_options(
             if chain is None:
                 continue
 
-            dte = (datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()).days
-            spreads = scanner._find_vertical_spreads(symbol, current_price, chain, expiry, "DEBIT_SPREAD")
+            dte = (
+                datetime.strptime(expiry, "%Y-%m-%d").date() - datetime.now().date()
+            ).days
+            spreads = scanner._find_vertical_spreads(
+                symbol, current_price, chain, expiry, "DEBIT_SPREAD"
+            )
 
             for spread in spreads:
                 # ✅ RISK GATE: Check if trade fits risk profile
@@ -454,13 +507,13 @@ def find_cheapest_options(
                 }
 
                 rejected, reason = risk_engine.should_reject_trade(
-                    trade_candidate,
-                    portfolio or [],
-                    market_context
+                    trade_candidate, portfolio or [], market_context
                 )
 
                 if rejected:
-                    logger.debug(f"Trade rejected: {symbol} {spread['strategy']} @ {spread['legs'][0]['strike']} - {reason}")
+                    logger.debug(
+                        f"Trade rejected: {symbol} {spread['strategy']} @ {spread['legs'][0]['strike']} - {reason}"
+                    )
                     spread["_rejected"] = reason
                 else:
                     spread["_risk_pass"] = True
@@ -482,22 +535,22 @@ def find_cheapest_options(
         # Sort by profit/cost ratio
         accepted = sorted(
             accepted,
-            key=lambda x: (x["max_profit"] / x["cost"] if x["cost"] > 0 else 0),
-            reverse=True
+            key=lambda x: x["max_profit"] / x["cost"] if x["cost"] > 0 else 0,
+            reverse=True,
         )
 
         # Format output
-        output = f"\n{'='*80}\n"
+        output = f"\n{'=' * 80}\n"
         output += f"TOP {min(top_n, len(accepted))} OPPORTUNITIES FOR {symbol}\n"
         output += f"Current Price: ${current_price:.2f} | Risk Engine: ACTIVE\n"
         output += f"Passed Risk Checks: {len(accepted)} | Rejected: {len(rejected)}\n"
-        output += f"{'='*80}\n\n"
+        output += f"{'=' * 80}\n\n"
 
         for i, opp in enumerate(accepted[:top_n], 1):
             output += f"{i}. {opp['strategy']} (Exp: {opp['expiration']})\n"
             output += f"   Long:  ${opp['legs'][0]['strike']:.2f} Call | Delta: {opp['legs'][0]['delta']:.2f}\n"
             output += f"   Short: ${opp['legs'][1]['strike']:.2f} Call | Delta: {opp['legs'][1]['delta']:.2f}\n"
-            output += f"   Cost: ${opp['cost']:.2f} | Max Profit: ${opp['max_profit']:.2f} | R/R: {opp['max_profit']/opp['cost']:.2f}x\n"
+            output += f"   Cost: ${opp['cost']:.2f} | Max Profit: ${opp['max_profit']:.2f} | R/R: {opp['max_profit'] / opp['cost']:.2f}x\n"
             output += f"   {opp['description']}\n\n"
 
         if rejected:
@@ -505,7 +558,7 @@ def find_cheapest_options(
             for r in rejected[:5]:
                 output += f"  ❌ {r['strategy']} @ {r['legs'][0]['strike']}: {r['_rejected']}\n"
 
-        output += f"\n⚠️  Disclaimer: Informational only, not financial advice.\n"
+        output += "\n⚠️  Disclaimer: Informational only, not financial advice.\n"
         return output
 
     except ValueError as e:

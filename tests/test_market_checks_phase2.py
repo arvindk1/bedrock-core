@@ -4,7 +4,6 @@ Tests for Phase-2 ScoredGatekeeper (market_checks.py refactor)
 Verifies liquidity + spread scoring matches Phase-2 spec.
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 import sys
@@ -41,7 +40,7 @@ class TestLiquidityCheck:
         gatekeeper = ScoredGatekeeper()
         legs = [
             {"open_interest": 10000, "nbbo_size": 200},  # min(10000, 200*100) = 10000
-            {"open_interest": 8000, "nbbo_size": 150},   # min(8000, 150*100) = 8000
+            {"open_interest": 8000, "nbbo_size": 150},  # min(8000, 150*100) = 8000
         ]
         score, reason, penalty = gatekeeper._check_liquidity({"legs": legs})
         # High liquidity means low impact % (target_size 100 / min(10000,8000) < 2%)
@@ -195,7 +194,9 @@ class TestCheckTrade:
         }
         score = gatekeeper.check_trade(proposal)
         # Check for structured IV_PENALTY codes in warnings
-        iv_warnings = [w for w in score.warnings if is_structured_reason(w) and "IV_PENALTY" in w]
+        iv_warnings = [
+            w for w in score.warnings if is_structured_reason(w) and "IV_PENALTY" in w
+        ]
         assert len(iv_warnings) > 0
         assert score.total_score <= 85  # Penalized (15-point penalty)
 
@@ -218,7 +219,9 @@ class TestCheckTrade:
         }
         score = gatekeeper.check_trade(proposal)
         # Check for structured IV_PENALTY codes in warnings
-        iv_warnings = [w for w in score.warnings if is_structured_reason(w) and "IV_PENALTY" in w]
+        iv_warnings = [
+            w for w in score.warnings if is_structured_reason(w) and "IV_PENALTY" in w
+        ]
         assert len(iv_warnings) > 0
         assert score.total_score <= 85  # Penalized (15-point penalty)
 

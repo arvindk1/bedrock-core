@@ -9,7 +9,6 @@ from datetime import datetime, date, timedelta
 from unittest.mock import patch, MagicMock, PropertyMock
 
 import pandas as pd
-import pytest
 
 # Bare import path (matches container layout)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))

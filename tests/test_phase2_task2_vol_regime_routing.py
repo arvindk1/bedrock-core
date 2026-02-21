@@ -13,10 +13,8 @@ change the generation logic). Task 2 makes it real.
 
 import sys
 import os
-from datetime import datetime
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
@@ -33,9 +31,15 @@ class TestVolRegimeRoutingFoundation:
 
         with patch.object(scanner.vol_engine, "detect_regime") as mock_regime:
             mock_regime.return_value = VolRegime.LOW
-            with patch.object(scanner, "_find_optimal_expiration", return_value="2026-03-20"):
-                with patch.object(scanner.market_data, "get_current_price", return_value=150.0):
-                    with patch.object(scanner.market_data, "get_option_chain", return_value=None):
+            with patch.object(
+                scanner, "_find_optimal_expiration", return_value="2026-03-20"
+            ):
+                with patch.object(
+                    scanner.market_data, "get_current_price", return_value=150.0
+                ):
+                    with patch.object(
+                        scanner.market_data, "get_option_chain", return_value=None
+                    ):
                         # Should call detect_regime
                         scanner.scan_opportunities("AAPL")
 
@@ -47,11 +51,19 @@ class TestVolRegimeRoutingFoundation:
 
         # Mock vol engine to return each regime
         with patch.object(scanner.vol_engine, "detect_regime") as mock_regime:
-            with patch.object(scanner.vol_engine, "calculate_volatility") as mock_vol_calc:
+            with patch.object(
+                scanner.vol_engine, "calculate_volatility"
+            ) as mock_vol_calc:
                 mock_vol_calc.return_value = MagicMock(annual_volatility=0.30)
-                with patch.object(scanner, "_find_optimal_expiration", return_value="2026-03-20"):
-                    with patch.object(scanner.market_data, "get_current_price", return_value=150.0):
-                        with patch.object(scanner.market_data, "get_option_chain", return_value=None):
+                with patch.object(
+                    scanner, "_find_optimal_expiration", return_value="2026-03-20"
+                ):
+                    with patch.object(
+                        scanner.market_data, "get_current_price", return_value=150.0
+                    ):
+                        with patch.object(
+                            scanner.market_data, "get_option_chain", return_value=None
+                        ):
                             # LOW vol -> DEBIT_SPREAD
                             mock_regime.return_value = VolRegime.LOW
                             scanner.scan_opportunities("AAPL")
@@ -79,13 +91,20 @@ class TestDebitSpreadGeneration:
         with patch.object(scanner.vol_engine, "detect_regime") as mock_regime:
             mock_regime.return_value = VolRegime.LOW
 
-            with patch.object(scanner.vol_engine, "calculate_volatility") as mock_vol_calc:
+            with patch.object(
+                scanner.vol_engine, "calculate_volatility"
+            ) as mock_vol_calc:
                 mock_vol_calc.return_value = MagicMock(annual_volatility=0.20)
 
-                with patch.object(scanner, "_find_optimal_expiration", return_value="2026-03-20"):
-                    with patch.object(scanner.market_data, "get_current_price", return_value=150.0):
+                with patch.object(
+                    scanner, "_find_optimal_expiration", return_value="2026-03-20"
+                ):
+                    with patch.object(
+                        scanner.market_data, "get_current_price", return_value=150.0
+                    ):
                         # Mock option chain with call data
                         import pandas as pd
+
                         calls_data = {
                             "strike": [145.0, 150.0, 155.0, 160.0],
                             "bid": [7.0, 3.0, 1.5, 0.5],
@@ -102,11 +121,17 @@ class TestDebitSpreadGeneration:
                         mock_chain.calls = calls_df
                         mock_chain.puts = puts_df
 
-                        with patch.object(scanner.market_data, "get_option_chain", return_value=mock_chain):
+                        with patch.object(
+                            scanner.market_data,
+                            "get_option_chain",
+                            return_value=mock_chain,
+                        ):
                             candidates = scanner.scan_opportunities("AAPL")
 
                             # Should generate candidates (call debit spreads in LOW vol)
-                            assert len(candidates) > 0, "Should generate debit spreads in LOW vol"
+                            assert len(candidates) > 0, (
+                                "Should generate debit spreads in LOW vol"
+                            )
 
                             # All should be debit spreads (buy long, sell short)
                             for candidate in candidates:
@@ -151,14 +176,24 @@ class TestStrategyPreferenceOverride:
         with patch.object(scanner.vol_engine, "detect_regime") as mock_regime:
             mock_regime.return_value = VolRegime.HIGH  # High vol normally = credit
 
-            with patch.object(scanner.vol_engine, "calculate_volatility") as mock_vol_calc:
+            with patch.object(
+                scanner.vol_engine, "calculate_volatility"
+            ) as mock_vol_calc:
                 mock_vol_calc.return_value = MagicMock(annual_volatility=0.60)
 
-                with patch.object(scanner, "_find_optimal_expiration", return_value="2026-03-20"):
-                    with patch.object(scanner.market_data, "get_current_price", return_value=150.0):
-                        with patch.object(scanner.market_data, "get_option_chain", return_value=None):
+                with patch.object(
+                    scanner, "_find_optimal_expiration", return_value="2026-03-20"
+                ):
+                    with patch.object(
+                        scanner.market_data, "get_current_price", return_value=150.0
+                    ):
+                        with patch.object(
+                            scanner.market_data, "get_option_chain", return_value=None
+                        ):
                             # User specifies DEBIT_SPREAD explicitly
-                            scanner.scan_opportunities("AAPL", strategy_preference="DEBIT_SPREAD")
+                            scanner.scan_opportunities(
+                                "AAPL", strategy_preference="DEBIT_SPREAD"
+                            )
 
                             # Should use user preference, not regime's suggestion
                             # (Verify via logging: should say "Strategy=DEBIT_SPREAD" not CREDIT_SPREAD)
@@ -215,10 +250,18 @@ class TestRegimeEdgeCases:
         """If regime detection fails, use safe default."""
         scanner = OptionsScanner()
 
-        with patch.object(scanner.vol_engine, "detect_regime", side_effect=Exception("vol calc error")):
-            with patch.object(scanner, "_find_optimal_expiration", return_value="2026-03-20"):
-                with patch.object(scanner.market_data, "get_current_price", return_value=150.0):
-                    with patch.object(scanner.market_data, "get_option_chain", return_value=None):
+        with patch.object(
+            scanner.vol_engine, "detect_regime", side_effect=Exception("vol calc error")
+        ):
+            with patch.object(
+                scanner, "_find_optimal_expiration", return_value="2026-03-20"
+            ):
+                with patch.object(
+                    scanner.market_data, "get_current_price", return_value=150.0
+                ):
+                    with patch.object(
+                        scanner.market_data, "get_option_chain", return_value=None
+                    ):
                         # Should not crash, should use default strategy
                         candidates = scanner.scan_opportunities("AAPL")
                         # Should either return [] or use VERTICAL_SPREAD as fallback
@@ -231,10 +274,20 @@ class TestRegimeEdgeCases:
         with patch.object(scanner.vol_engine, "detect_regime") as mock_regime:
             mock_regime.return_value = VolRegime.MEDIUM
 
-            with patch.object(scanner.vol_engine, "calculate_volatility", side_effect=Exception("no data")):
-                with patch.object(scanner, "_find_optimal_expiration", return_value="2026-03-20"):
-                    with patch.object(scanner.market_data, "get_current_price", return_value=150.0):
-                        with patch.object(scanner.market_data, "get_option_chain", return_value=None):
+            with patch.object(
+                scanner.vol_engine,
+                "calculate_volatility",
+                side_effect=Exception("no data"),
+            ):
+                with patch.object(
+                    scanner, "_find_optimal_expiration", return_value="2026-03-20"
+                ):
+                    with patch.object(
+                        scanner.market_data, "get_current_price", return_value=150.0
+                    ):
+                        with patch.object(
+                            scanner.market_data, "get_option_chain", return_value=None
+                        ):
                             # Should handle gracefully
                             candidates = scanner.scan_opportunities("AAPL")
                             assert isinstance(candidates, list)

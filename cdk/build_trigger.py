@@ -15,21 +15,24 @@ logger.setLevel(logging.INFO)
 
 def send_cfn_response(event, context, status, data, reason=None):
     """Send response back to CloudFormation."""
-    body = json.dumps({
-        "Status": status,
-        "Reason": reason or f"See CloudWatch Log Stream: {context.log_stream_name}",
-        "PhysicalResourceId": context.log_stream_name,
-        "StackId": event["StackId"],
-        "RequestId": event["RequestId"],
-        "LogicalResourceId": event["LogicalResourceId"],
-        "NoEcho": False,
-        "Data": data,
-    })
+    body = json.dumps(
+        {
+            "Status": status,
+            "Reason": reason or f"See CloudWatch Log Stream: {context.log_stream_name}",
+            "PhysicalResourceId": context.log_stream_name,
+            "StackId": event["StackId"],
+            "RequestId": event["RequestId"],
+            "LogicalResourceId": event["LogicalResourceId"],
+            "NoEcho": False,
+            "Data": data,
+        }
+    )
 
     http = urllib3.PoolManager()
     try:
         http.request(
-            "PUT", event["ResponseURL"],
+            "PUT",
+            event["ResponseURL"],
             headers={"content-type": "", "content-length": str(len(body))},
             body=body,
         )
@@ -71,7 +74,9 @@ def handler(event, context):
                 return
             elif status in ("FAILED", "FAULT", "STOPPED", "TIMED_OUT"):
                 logger.error("Build %s failed: %s", build_id, status)
-                send_cfn_response(event, context, "FAILED", {"Error": f"Build failed: {status}"})
+                send_cfn_response(
+                    event, context, "FAILED", {"Error": f"Build failed: {status}"}
+                )
                 return
 
             logger.info("Build %s status: %s, waiting...", build_id, status)

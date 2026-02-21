@@ -11,7 +11,7 @@ import numpy as np
 # Allow bare imports from agent/ (matches container layout)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
-from risk_engine import RiskEngine, RiskSeverity, ConcentrationAlert, RiskMetric
+from risk_engine import RiskEngine, RiskSeverity
 
 
 # ---------------------------------------------------------------------------
@@ -49,17 +49,47 @@ class TestPerTradeRisk:
     def _make_portfolio(self):
         """Diversified portfolio — no single sector dominates."""
         return [
-            {"symbol": "AAPL", "strategy": "bull_put_spread", "max_loss": 200.0, "sector": "Technology"},
-            {"symbol": "XOM", "strategy": "iron_condor", "max_loss": 200.0, "sector": "Energy"},
-            {"symbol": "JPM", "strategy": "bull_put_spread", "max_loss": 200.0, "sector": "Financials"},
-            {"symbol": "JNJ", "strategy": "iron_condor", "max_loss": 200.0, "sector": "Healthcare"},
-            {"symbol": "BA", "strategy": "bull_put_spread", "max_loss": 200.0, "sector": "Industrials"},
+            {
+                "symbol": "AAPL",
+                "strategy": "bull_put_spread",
+                "max_loss": 200.0,
+                "sector": "Technology",
+            },
+            {
+                "symbol": "XOM",
+                "strategy": "iron_condor",
+                "max_loss": 200.0,
+                "sector": "Energy",
+            },
+            {
+                "symbol": "JPM",
+                "strategy": "bull_put_spread",
+                "max_loss": 200.0,
+                "sector": "Financials",
+            },
+            {
+                "symbol": "JNJ",
+                "strategy": "iron_condor",
+                "max_loss": 200.0,
+                "sector": "Healthcare",
+            },
+            {
+                "symbol": "BA",
+                "strategy": "bull_put_spread",
+                "max_loss": 200.0,
+                "sector": "Industrials",
+            },
         ]
 
     def test_reject_trade_exceeding_max_risk(self):
         """A trade whose max_loss exceeds max_risk_per_trade must be rejected."""
         engine = RiskEngine(max_risk_per_trade=500.0)
-        trade = {"symbol": "TSLA", "strategy": "bull_call_spread", "max_loss": 600.0, "sector": "Consumer Discretionary"}
+        trade = {
+            "symbol": "TSLA",
+            "strategy": "bull_call_spread",
+            "max_loss": 600.0,
+            "sector": "Consumer Discretionary",
+        }
         portfolio = self._make_portfolio()
 
         rejected, reason = engine.should_reject_trade(trade, portfolio, {})
@@ -71,7 +101,12 @@ class TestPerTradeRisk:
         """A trade within all limits should be accepted."""
         engine = RiskEngine(max_risk_per_trade=1000.0)
         # Use Consumer Staples (not in portfolio) with small risk — stays under 25%.
-        trade = {"symbol": "PG", "strategy": "bull_put_spread", "max_loss": 200.0, "sector": "Consumer Staples"}
+        trade = {
+            "symbol": "PG",
+            "strategy": "bull_put_spread",
+            "max_loss": 200.0,
+            "sector": "Consumer Staples",
+        }
         portfolio = self._make_portfolio()
 
         rejected, reason = engine.should_reject_trade(trade, portfolio, {})
@@ -101,10 +136,25 @@ class TestSectorConcentration:
         Total Tech = $1500/$2000 = 75% > 25%. Should reject."""
         engine = RiskEngine(max_risk_per_trade=5000)
         portfolio = [
-            {"symbol": "AAPL", "strategy": "bull_put_spread", "max_loss": 500.0, "sector": "Technology"},
-            {"symbol": "MSFT", "strategy": "iron_condor", "max_loss": 500.0, "sector": "Technology"},
+            {
+                "symbol": "AAPL",
+                "strategy": "bull_put_spread",
+                "max_loss": 500.0,
+                "sector": "Technology",
+            },
+            {
+                "symbol": "MSFT",
+                "strategy": "iron_condor",
+                "max_loss": 500.0,
+                "sector": "Technology",
+            },
         ]
-        trade = {"symbol": "GOOG", "strategy": "bull_call_spread", "max_loss": 500.0, "sector": "Technology"}
+        trade = {
+            "symbol": "GOOG",
+            "strategy": "bull_call_spread",
+            "max_loss": 500.0,
+            "sector": "Technology",
+        }
 
         rejected, reason = engine.should_reject_trade(trade, portfolio, {})
         assert rejected is True
@@ -117,11 +167,31 @@ class TestSectorConcentration:
         Tech = $600/$1200 = 50%. Should pass."""
         engine = RiskEngine(max_risk_per_trade=5000, max_sector_pct=0.50)
         portfolio = [
-            {"symbol": "AAPL", "strategy": "bull_put_spread", "max_loss": 300.0, "sector": "Technology"},
-            {"symbol": "JPM", "strategy": "iron_condor", "max_loss": 300.0, "sector": "Financials"},
-            {"symbol": "XOM", "strategy": "bull_put_spread", "max_loss": 300.0, "sector": "Energy"},
+            {
+                "symbol": "AAPL",
+                "strategy": "bull_put_spread",
+                "max_loss": 300.0,
+                "sector": "Technology",
+            },
+            {
+                "symbol": "JPM",
+                "strategy": "iron_condor",
+                "max_loss": 300.0,
+                "sector": "Financials",
+            },
+            {
+                "symbol": "XOM",
+                "strategy": "bull_put_spread",
+                "max_loss": 300.0,
+                "sector": "Energy",
+            },
         ]
-        trade = {"symbol": "MSFT", "strategy": "iron_condor", "max_loss": 300.0, "sector": "Technology"}
+        trade = {
+            "symbol": "MSFT",
+            "strategy": "iron_condor",
+            "max_loss": 300.0,
+            "sector": "Technology",
+        }
 
         rejected, reason = engine.should_reject_trade(trade, portfolio, {})
         assert rejected is False
@@ -151,30 +221,69 @@ class TestDrawdownCircuitBreaker:
     def test_halt_when_loss_exceeds_threshold(self):
         """Lost $2500 on $100k = 2.5% > 2%. Should halt."""
         engine = RiskEngine()
-        assert engine.check_drawdown_halt(daily_pnl=-2500.0, portfolio_value=100_000.0) is True
+        assert (
+            engine.check_drawdown_halt(daily_pnl=-2500.0, portfolio_value=100_000.0)
+            is True
+        )
 
     def test_no_halt_within_threshold(self):
         """Lost $1500 on $100k = 1.5% < 2%. Should not halt."""
         engine = RiskEngine()
-        assert engine.check_drawdown_halt(daily_pnl=-1500.0, portfolio_value=100_000.0) is False
+        assert (
+            engine.check_drawdown_halt(daily_pnl=-1500.0, portfolio_value=100_000.0)
+            is False
+        )
 
     def test_no_halt_on_positive_day(self):
         """Gained $500 on $100k. Should not halt."""
         engine = RiskEngine()
-        assert engine.check_drawdown_halt(daily_pnl=500.0, portfolio_value=100_000.0) is False
+        assert (
+            engine.check_drawdown_halt(daily_pnl=500.0, portfolio_value=100_000.0)
+            is False
+        )
 
     def test_drawdown_rejects_trade_via_market_context(self):
         """Trade with max_loss=500, market_context has daily_pnl=-3000,
         portfolio_value=100000. Should reject with 'circuit breaker' in reason."""
         engine = RiskEngine(max_risk_per_trade=5000)
         portfolio = [
-            {"symbol": "AAPL", "strategy": "bull_put_spread", "max_loss": 500.0, "sector": "Technology"},
-            {"symbol": "JPM", "strategy": "iron_condor", "max_loss": 500.0, "sector": "Financials"},
-            {"symbol": "XOM", "strategy": "bull_put_spread", "max_loss": 500.0, "sector": "Energy"},
-            {"symbol": "JNJ", "strategy": "iron_condor", "max_loss": 500.0, "sector": "Healthcare"},
-            {"symbol": "BA", "strategy": "bull_put_spread", "max_loss": 500.0, "sector": "Industrials"},
+            {
+                "symbol": "AAPL",
+                "strategy": "bull_put_spread",
+                "max_loss": 500.0,
+                "sector": "Technology",
+            },
+            {
+                "symbol": "JPM",
+                "strategy": "iron_condor",
+                "max_loss": 500.0,
+                "sector": "Financials",
+            },
+            {
+                "symbol": "XOM",
+                "strategy": "bull_put_spread",
+                "max_loss": 500.0,
+                "sector": "Energy",
+            },
+            {
+                "symbol": "JNJ",
+                "strategy": "iron_condor",
+                "max_loss": 500.0,
+                "sector": "Healthcare",
+            },
+            {
+                "symbol": "BA",
+                "strategy": "bull_put_spread",
+                "max_loss": 500.0,
+                "sector": "Industrials",
+            },
         ]
-        trade = {"symbol": "DIS", "strategy": "iron_condor", "max_loss": 500.0, "sector": "Communication Services"}
+        trade = {
+            "symbol": "DIS",
+            "strategy": "iron_condor",
+            "max_loss": 500.0,
+            "sector": "Communication Services",
+        }
         market_context = {"daily_pnl": -3000.0, "portfolio_value": 100_000.0}
 
         rejected, reason = engine.should_reject_trade(trade, portfolio, market_context)
@@ -186,7 +295,9 @@ class TestDrawdownCircuitBreaker:
     def test_zero_portfolio_value_no_halt(self):
         """Zero portfolio value, should not halt (no division by zero)."""
         engine = RiskEngine()
-        assert engine.check_drawdown_halt(daily_pnl=-100.0, portfolio_value=0.0) is False
+        assert (
+            engine.check_drawdown_halt(daily_pnl=-100.0, portfolio_value=0.0) is False
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +309,9 @@ class TestAnalyzePortfolioRisk:
     def test_empty_portfolio_returns_empty(self):
         """Empty positions, empty proposed. Should return ([], [])."""
         engine = RiskEngine()
-        alerts, metrics = engine.analyze_portfolio_risk(positions=[], proposed_trades=[])
+        alerts, metrics = engine.analyze_portfolio_risk(
+            positions=[], proposed_trades=[]
+        )
         assert alerts == []
         assert metrics == []
 
@@ -208,10 +321,30 @@ class TestAnalyzePortfolioRisk:
         with CRITICAL severity."""
         engine = RiskEngine()
         positions = [
-            {"symbol": "AAPL", "strategy": "bull_put_spread", "max_loss": 500.0, "sector": "Technology"},
-            {"symbol": "MSFT", "strategy": "iron_condor", "max_loss": 500.0, "sector": "Technology"},
-            {"symbol": "GOOG", "strategy": "bull_call_spread", "max_loss": 500.0, "sector": "Technology"},
-            {"symbol": "JPM", "strategy": "iron_condor", "max_loss": 100.0, "sector": "Financials"},
+            {
+                "symbol": "AAPL",
+                "strategy": "bull_put_spread",
+                "max_loss": 500.0,
+                "sector": "Technology",
+            },
+            {
+                "symbol": "MSFT",
+                "strategy": "iron_condor",
+                "max_loss": 500.0,
+                "sector": "Technology",
+            },
+            {
+                "symbol": "GOOG",
+                "strategy": "bull_call_spread",
+                "max_loss": 500.0,
+                "sector": "Technology",
+            },
+            {
+                "symbol": "JPM",
+                "strategy": "iron_condor",
+                "max_loss": 100.0,
+                "sector": "Financials",
+            },
         ]
 
         alerts, metrics = engine.analyze_portfolio_risk(positions=positions)
@@ -226,8 +359,18 @@ class TestAnalyzePortfolioRisk:
         Should have >= 2 strategy metrics."""
         engine = RiskEngine()
         positions = [
-            {"symbol": "AAPL", "strategy": "bull_call_spread", "max_loss": 500.0, "sector": "Technology"},
-            {"symbol": "JPM", "strategy": "iron_condor", "max_loss": 500.0, "sector": "Financials"},
+            {
+                "symbol": "AAPL",
+                "strategy": "bull_call_spread",
+                "max_loss": 500.0,
+                "sector": "Technology",
+            },
+            {
+                "symbol": "JPM",
+                "strategy": "iron_condor",
+                "max_loss": 500.0,
+                "sector": "Financials",
+            },
         ]
 
         alerts, metrics = engine.analyze_portfolio_risk(positions=positions)

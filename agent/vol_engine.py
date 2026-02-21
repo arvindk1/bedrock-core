@@ -9,7 +9,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, Optional
+from typing import Optional
 
 import numpy as np
 import yfinance as yf
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class VolatilityModel(Enum):
     HISTORICAL = "historical"
@@ -42,6 +43,7 @@ class VolRegime(Enum):
 # Dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class VolatilityResult:
     annual_volatility: float
@@ -50,7 +52,7 @@ class VolatilityResult:
     confidence_score: float
     data_points: int
     calculation_date: datetime
-    additional_metrics: Dict[str, float] = field(default_factory=dict)
+    additional_metrics: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -67,6 +69,7 @@ class GARCHParameters:
 # VolEngine
 # ---------------------------------------------------------------------------
 
+
 class VolEngine:
     """Synchronous volatility engine supporting multiple models."""
 
@@ -75,7 +78,7 @@ class VolEngine:
         default_history_days: int = 252,
         garch_max_iterations: int = 1000,
         ewma_lambda: float = 0.94,
-        hybrid_weights: Optional[Dict[VolatilityModel, float]] = None,
+        hybrid_weights: Optional[dict[VolatilityModel, float]] = None,
     ):
         self.default_history_days = default_history_days
         self.garch_max_iterations = garch_max_iterations
@@ -117,7 +120,9 @@ class VolEngine:
         long_result = self._calc_historical(symbol, history_days)
         iv_rank = self.calculate_iv_rank(symbol, history_days)
 
-        ratio = short_result.annual_volatility / max(long_result.annual_volatility, 1e-8)
+        ratio = short_result.annual_volatility / max(
+            long_result.annual_volatility, 1e-8
+        )
         score = 0.5 * ratio + 0.5 * iv_rank
 
         if score < 0.8:
@@ -152,7 +157,7 @@ class VolEngine:
         current_price: float,
         days: int,
         confidence: float = 0.68,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Expected move using hybrid vol, sqrt(days/252), norm.ppf."""
         vol_result = self._calc_hybrid(symbol, self.default_history_days)
         annual_vol = vol_result.annual_volatility
@@ -227,7 +232,9 @@ class VolEngine:
     def _calc_garch(self, symbol: str, history_days: int) -> VolatilityResult:
         """Fit GARCH(1,1) and produce one-step forecast. Falls back to historical."""
         try:
-            returns = self._fetch_returns(symbol, max(history_days, 500), min_points=100)
+            returns = self._fetch_returns(
+                symbol, max(history_days, 500), min_points=100
+            )
         except ValueError:
             logger.warning("Insufficient data for GARCH, falling back to historical")
             return self._calc_historical(symbol, history_days)
@@ -240,7 +247,9 @@ class VolEngine:
         # One-step forecast
         last_var = np.var(returns[-10:])
         last_ret_sq = returns[-1] ** 2
-        forecast_var = params.omega + params.alpha * last_ret_sq + params.beta * last_var
+        forecast_var = (
+            params.omega + params.alpha * last_ret_sq + params.beta * last_var
+        )
         forecast_var = max(forecast_var, 1e-8)
 
         daily_vol = np.sqrt(forecast_var)
@@ -268,7 +277,7 @@ class VolEngine:
         lam = self.ewma_lambda
         var = returns[0] ** 2
         for r in returns[1:]:
-            var = lam * var + (1 - lam) * r ** 2
+            var = lam * var + (1 - lam) * r**2
 
         daily_vol = np.sqrt(var)
         annual_vol = daily_vol * np.sqrt(252)
@@ -289,7 +298,7 @@ class VolEngine:
 
     def _calc_hybrid(self, symbol: str, history_days: int) -> VolatilityResult:
         """Weighted ensemble of available models."""
-        results: Dict[VolatilityModel, VolatilityResult] = {}
+        results: dict[VolatilityModel, VolatilityResult] = {}
 
         for model, method in [
             (VolatilityModel.HISTORICAL, self._calc_historical),
@@ -314,8 +323,12 @@ class VolEngine:
             weighted_daily += res.daily_volatility * w
 
         if total_weight == 0:
-            weighted_annual = float(np.mean([r.annual_volatility for r in results.values()]))
-            weighted_daily = float(np.mean([r.daily_volatility for r in results.values()]))
+            weighted_annual = float(
+                np.mean([r.annual_volatility for r in results.values()])
+            )
+            weighted_daily = float(
+                np.mean([r.daily_volatility for r in results.values()])
+            )
         else:
             weighted_annual /= total_weight
             weighted_daily /= total_weight
@@ -324,7 +337,9 @@ class VolEngine:
             annual_volatility=weighted_annual,
             daily_volatility=weighted_daily,
             model_used=VolatilityModel.HYBRID,
-            confidence_score=min(0.95, float(np.mean([r.confidence_score for r in results.values()]))),
+            confidence_score=min(
+                0.95, float(np.mean([r.confidence_score for r in results.values()]))
+            ),
             data_points=sum(r.data_points for r in results.values()),
             calculation_date=datetime.now(),
             additional_metrics={
@@ -375,7 +390,7 @@ class VolEngine:
         for t in range(1, n):
             sigma2[t] = omega + alpha * returns[t - 1] ** 2 + beta * sigma2[t - 1]
 
-        nll = 0.5 * np.sum(np.log(2 * np.pi * sigma2) + returns ** 2 / sigma2)
+        nll = 0.5 * np.sum(np.log(2 * np.pi * sigma2) + returns**2 / sigma2)
         return nll
 
     # ------------------------------------------------------------------

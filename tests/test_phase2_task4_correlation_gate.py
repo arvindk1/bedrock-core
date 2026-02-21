@@ -14,10 +14,8 @@ Architecture:
 
 import sys
 import os
-from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
@@ -197,7 +195,9 @@ class TestCorrelationRejectionReason:
             policy_mode="tight",
         )
 
-        rejection_reason = "Correlation 0.87 with existing AAPL position (threshold 0.70)"
+        rejection_reason = (
+            "Correlation 0.87 with existing AAPL position (threshold 0.70)"
+        )
         log.rejections_correlation.append(
             ({"symbol": "MSFT", "strategy": "BULL_CALL"}, rejection_reason)
         )

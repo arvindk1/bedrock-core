@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # TOOL 1: scan_options (SIMPLE — unchanged from Phase 1)
 # ============================================================================
 
+
 @tool
 def scan_options(symbol: str, start_date: str, end_date: str, top_n: int = 5) -> str:
     """
@@ -41,13 +42,14 @@ def scan_options(symbol: str, start_date: str, end_date: str, top_n: int = 5) ->
         return find_cheapest_options(symbol, start_date, end_date, top_n)
     except ValueError as e:
         return f"Error: {e}"
-    except Exception as e:
+    except Exception:
         return f"Error scanning options for {symbol}"
 
 
 # ============================================================================
 # TOOL 2: scan_options_with_strategy (ORCHESTRATED — Phase 2)
 # ============================================================================
+
 
 @tool
 def scan_options_with_strategy(
@@ -110,6 +112,7 @@ def scan_options_with_strategy(
 # ============================================================================
 # TOOL 3: check_trade_risk (RISK GATE ONLY)
 # ============================================================================
+
 
 @tool
 def check_trade_risk(

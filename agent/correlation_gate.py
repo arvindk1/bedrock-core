@@ -21,7 +21,7 @@ Rejection logic:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import numpy as np
 
@@ -95,7 +95,7 @@ class CorrelationGate:
         lookback: int = 60,
         top_n_positions: int = 3,
         fallback_unknown_corr: float = 0.80,
-        thresholds: Optional[Dict[str, float]] = None,
+        thresholds: Optional[dict[str, float]] = None,
     ):
         """
         Initialize correlation gate.
@@ -117,11 +117,11 @@ class CorrelationGate:
 
     def filter_candidates(
         self,
-        candidates: List[Dict[str, Any]],
-        portfolio: Optional[List[Dict[str, Any]]] = None,
-        portfolio_prices: Optional[Dict[str, List[float]]] = None,
-        candidate_prices: Optional[Dict[str, List[float]]] = None,
-    ) -> Tuple[List[Dict[str, Any]], List[Tuple[Dict[str, Any], str]]]:
+        candidates: list[dict[str, Any]],
+        portfolio: Optional[list[dict[str, Any]]] = None,
+        portfolio_prices: Optional[dict[str, list[float]]] = None,
+        candidate_prices: Optional[dict[str, list[float]]] = None,
+    ) -> tuple[list[dict[str, Any]], list[tuple[dict[str, Any], str]]]:
         """
         Filter candidates based on correlation with top portfolio positions.
 
@@ -157,8 +157,8 @@ class CorrelationGate:
             f"(of {len(portfolio)} total portfolio)"
         )
 
-        accepted: List[Dict[str, Any]] = []
-        rejections: List[Tuple[Dict[str, Any], str]] = []
+        accepted: list[dict[str, Any]] = []
+        rejections: list[tuple[dict[str, Any], str]] = []
 
         for cand in candidates:
             c_sym = cand.get("symbol", "?")
@@ -230,11 +230,7 @@ class CorrelationGate:
             return self.thresholds["same_symbol"]
 
         # Same sector = moderate threshold
-        if (
-            c_sector != "UNKNOWN"
-            and p_sector != "UNKNOWN"
-            and c_sector == p_sector
-        ):
+        if c_sector != "UNKNOWN" and p_sector != "UNKNOWN" and c_sector == p_sector:
             return self.thresholds["same_sector"]
 
         # Different sector = lenient threshold
@@ -246,9 +242,9 @@ class CorrelationGate:
         c_sector: str,
         p_sym: str,
         p_sector: str,
-        portfolio_prices: Dict[str, List[float]],
-        candidate_prices: Dict[str, List[float]],
-    ) -> Tuple[Optional[float], str]:
+        portfolio_prices: dict[str, list[float]],
+        candidate_prices: dict[str, list[float]],
+    ) -> tuple[Optional[float], str]:
         """
         Compute correlation on return prices (preferred),
         fallback to sector heuristic if prices missing or too short.
@@ -282,7 +278,7 @@ class CorrelationGate:
 
     @staticmethod
     def _rolling_corr(
-        a_prices: Optional[List[float]], b_prices: Optional[List[float]], lookback: int
+        a_prices: Optional[list[float]], b_prices: Optional[list[float]], lookback: int
     ) -> Optional[float]:
         """
         Compute Pearson correlation of daily returns over lookback period.

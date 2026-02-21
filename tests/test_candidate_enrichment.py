@@ -7,7 +7,6 @@ Verifies:
 3. Full flow: candidates → gatekeeper → final picks
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 import sys
@@ -28,6 +27,7 @@ class TestCandidateEnrichment:
 
         # Create mock chain with calls DataFrame
         import pandas as pd
+
         calls_data = {
             "strike": [150.0, 155.0],
             "bid": [2.0, 1.0],
@@ -52,7 +52,7 @@ class TestCandidateEnrichment:
             spot=150.0,
             chain=mock_chain,
             expiry="2026-03-20",
-            strategy="DEBIT_SPREAD"
+            strategy="DEBIT_SPREAD",
         )
 
         if candidates:
@@ -77,6 +77,7 @@ class TestCandidateEnrichment:
         scanner = OptionsScanner()
 
         import pandas as pd
+
         calls_data = {
             "strike": [150.0, 155.0],
             "bid": [2.0, 1.0],
@@ -100,7 +101,7 @@ class TestCandidateEnrichment:
             spot=150.0,
             chain=mock_chain,
             expiry="2026-03-20",
-            strategy="DEBIT_SPREAD"
+            strategy="DEBIT_SPREAD",
         )
 
         if candidates:

@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, PropertyMock
 
 import pandas as pd
-import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
@@ -80,8 +79,6 @@ class TestEventBlockingHardStop:
         # Calculate DTE to include this FOMC date
         today = datetime.now().date()
         if fomc_date >= today:
-            dte = (fomc_date - today).days + 5  # Buffer to ensure inclusion
-
             # Run orchestration
             log = full_scan_with_orchestration(
                 symbol="SPY",
@@ -96,8 +93,10 @@ class TestEventBlockingHardStop:
             if len(log.blocking_events) > 0:
                 assert len(log.candidates_raw) == 0, "Macro event should block"
                 assert len(log.final_picks) == 0
-                assert any("FOMC" in str(e) or "CPI" in str(e) or "Jobs" in str(e)
-                          for e in log.blocking_events)
+                assert any(
+                    "FOMC" in str(e) or "CPI" in str(e) or "Jobs" in str(e)
+                    for e in log.blocking_events
+                )
 
     @patch("event_loader.yf.Ticker")
     @patch("options_scanner.generate_candidates")

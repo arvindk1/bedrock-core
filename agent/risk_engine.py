@@ -15,7 +15,7 @@ import yaml
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import numpy as np
 
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Load config if available
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
 
+
 def load_risk_config():
     if os.path.exists(CONFIG_PATH):
         try:
@@ -35,7 +36,6 @@ def load_risk_config():
         except Exception as e:
             logger.error(f"Failed to load user config from {CONFIG_PATH}: {e}")
     return {}
-
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ class ConcentrationAlert:
     limit_exposure: float
     message: str
     recommendation: str
-    affected_positions: List[str] = field(default_factory=list)
+    affected_positions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -78,7 +78,7 @@ class RiskMetric:
 # ---------------------------------------------------------------------------
 # Sector Mapping (GICS-based fallback)
 # ---------------------------------------------------------------------------
-SECTOR_MAP: Dict[str, str] = {
+SECTOR_MAP: dict[str, str] = {
     # Technology
     "AAPL": "Technology",
     "MSFT": "Technology",
@@ -168,21 +168,33 @@ class RiskEngine:
         drawdown_halt_pct: Optional[float] = None,
     ):
         risk_config = load_risk_config()
-        
+
         self.max_risk_per_trade = max_risk_per_trade
-        self.max_sector_pct = max_sector_pct if max_sector_pct is not None else risk_config.get("max_sector_concentration_pct", 0.25)
-        self.max_correlation = max_correlation if max_correlation is not None else risk_config.get("max_portfolio_correlation", 0.7)
-        self.drawdown_halt_pct = drawdown_halt_pct if drawdown_halt_pct is not None else risk_config.get("drawdown_halt_pct", 0.02)
+        self.max_sector_pct = (
+            max_sector_pct
+            if max_sector_pct is not None
+            else risk_config.get("max_sector_concentration_pct", 0.25)
+        )
+        self.max_correlation = (
+            max_correlation
+            if max_correlation is not None
+            else risk_config.get("max_portfolio_correlation", 0.7)
+        )
+        self.drawdown_halt_pct = (
+            drawdown_halt_pct
+            if drawdown_halt_pct is not None
+            else risk_config.get("drawdown_halt_pct", 0.02)
+        )
 
     # ------------------------------------------------------------------
     # Per-Trade Gate
     # ------------------------------------------------------------------
     def should_reject_trade(
         self,
-        trade: Dict[str, Any],
-        portfolio: List[Dict[str, Any]],
-        market_context: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        trade: dict[str, Any],
+        portfolio: list[dict[str, Any]],
+        market_context: Optional[dict[str, Any]] = None,
+    ) -> tuple[bool, Optional[str]]:
         """
         Determine whether a proposed trade should be rejected.
 
@@ -227,7 +239,9 @@ class RiskEngine:
         if market_context:
             daily_pnl = market_context.get("daily_pnl", 0.0)
             portfolio_value = market_context.get("portfolio_value", 0.0)
-            if portfolio_value > 0 and self.check_drawdown_halt(daily_pnl, portfolio_value):
+            if portfolio_value > 0 and self.check_drawdown_halt(
+                daily_pnl, portfolio_value
+            ):
                 loss_pct = round(abs(daily_pnl) / portfolio_value * 100, 1)
                 reason = format_reason_code(
                     gate=GATE_RISK,
@@ -249,10 +263,10 @@ class RiskEngine:
     # ------------------------------------------------------------------
     def _check_sector_concentration(
         self,
-        trade: Dict[str, Any],
-        portfolio: List[Dict[str, Any]],
-        market_context: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        trade: dict[str, Any],
+        portfolio: list[dict[str, Any]],
+        market_context: Optional[dict[str, Any]] = None,
+    ) -> tuple[bool, Optional[str]]:
         """
         Check whether adding this trade would breach sector concentration.
 
@@ -277,7 +291,9 @@ class RiskEngine:
         # This prevents an empty portfolio from viewing a single trade as 100% concentration.
         portfolio_denominator = total_risk
         if market_context and "portfolio_value" in market_context:
-            portfolio_denominator = max(total_risk, market_context.get("portfolio_value", 0.0))
+            portfolio_denominator = max(
+                total_risk, market_context.get("portfolio_value", 0.0)
+            )
 
         if portfolio_denominator == 0:
             return False, None
@@ -300,7 +316,7 @@ class RiskEngine:
 
         return False, None
 
-    def _resolve_sector(self, position: Dict[str, Any]) -> str:
+    def _resolve_sector(self, position: dict[str, Any]) -> str:
         """Return sector for a position, falling back to SECTOR_MAP."""
         sector = position.get("sector")
         if sector:
@@ -311,9 +327,7 @@ class RiskEngine:
     # ------------------------------------------------------------------
     # Drawdown Circuit Breaker
     # ------------------------------------------------------------------
-    def check_drawdown_halt(
-        self, daily_pnl: float, portfolio_value: float
-    ) -> bool:
+    def check_drawdown_halt(self, daily_pnl: float, portfolio_value: float) -> bool:
         """
         Return True if trading should HALT (daily loss exceeds threshold).
 
@@ -331,10 +345,10 @@ class RiskEngine:
     # ------------------------------------------------------------------
     def analyze_portfolio_risk(
         self,
-        positions: List[Dict[str, Any]],
-        proposed_trades: Optional[List[Dict[str, Any]]] = None,
-        market_context: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ConcentrationAlert], List[RiskMetric]]:
+        positions: list[dict[str, Any]],
+        proposed_trades: Optional[list[dict[str, Any]]] = None,
+        market_context: Optional[dict[str, Any]] = None,
+    ) -> tuple[list[ConcentrationAlert], list[RiskMetric]]:
         """
         Full portfolio risk analysis.
 
@@ -342,8 +356,8 @@ class RiskEngine:
             (alerts, metrics)
         """
         all_positions = list(positions) + (proposed_trades or [])
-        alerts: List[ConcentrationAlert] = []
-        metrics: List[RiskMetric] = []
+        alerts: list[ConcentrationAlert] = []
+        metrics: list[RiskMetric] = []
 
         if not all_positions:
             return alerts, metrics
@@ -354,7 +368,9 @@ class RiskEngine:
         metrics.extend(sec_metrics)
 
         # Strategy concentration
-        strat_alerts, strat_metrics = self._analyze_strategy_concentration(all_positions)
+        strat_alerts, strat_metrics = self._analyze_strategy_concentration(
+            all_positions
+        )
         alerts.extend(strat_alerts)
         metrics.extend(strat_metrics)
 
@@ -364,14 +380,14 @@ class RiskEngine:
     # Sector Concentration Analysis
     # ------------------------------------------------------------------
     def _analyze_sector_concentration(
-        self, positions: List[Dict[str, Any]]
-    ) -> Tuple[List[ConcentrationAlert], List[RiskMetric]]:
+        self, positions: list[dict[str, Any]]
+    ) -> tuple[list[ConcentrationAlert], list[RiskMetric]]:
         """Analyze sector concentration across all positions (dollar-risk weighted)."""
-        alerts: List[ConcentrationAlert] = []
-        metrics: List[RiskMetric] = []
+        alerts: list[ConcentrationAlert] = []
+        metrics: list[RiskMetric] = []
 
-        sector_risk: Dict[str, float] = {}
-        sector_symbols: Dict[str, List[str]] = {}
+        sector_risk: dict[str, float] = {}
+        sector_symbols: dict[str, list[str]] = {}
         total_risk = 0.0
 
         for pos in positions:
@@ -419,14 +435,14 @@ class RiskEngine:
     # Strategy Concentration Analysis
     # ------------------------------------------------------------------
     def _analyze_strategy_concentration(
-        self, positions: List[Dict[str, Any]]
-    ) -> Tuple[List[ConcentrationAlert], List[RiskMetric]]:
+        self, positions: list[dict[str, Any]]
+    ) -> tuple[list[ConcentrationAlert], list[RiskMetric]]:
         """Analyze strategy concentration (dollar-risk weighted)."""
-        alerts: List[ConcentrationAlert] = []
-        metrics: List[RiskMetric] = []
+        alerts: list[ConcentrationAlert] = []
+        metrics: list[RiskMetric] = []
 
-        strategy_risk: Dict[str, float] = {}
-        strategy_symbols: Dict[str, List[str]] = {}
+        strategy_risk: dict[str, float] = {}
+        strategy_symbols: dict[str, list[str]] = {}
         total_risk = 0.0
 
         for pos in positions:
@@ -506,9 +522,7 @@ class RiskEngine:
         corr_matrix = np.corrcoef(returns_a, returns_b)
         return float(corr_matrix[0, 1])
 
-    def check_correlation_limit(
-        self, correlation: float
-    ) -> Tuple[bool, Optional[str]]:
+    def check_correlation_limit(self, correlation: float) -> tuple[bool, Optional[str]]:
         """
         Check whether a correlation value exceeds the configured threshold.
 

@@ -23,7 +23,7 @@ DATA CONVENTIONS (critical for UI consistency):
   - Percent fields named with "_pct" (e.g., impact_pct, loss_pct)
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional
 
 
 # Hard gate (reject/block - stops trade)
@@ -42,6 +42,7 @@ GATE_EVENT = GATE_EVENT_BLOCK
 GATE_RISK = GATE_RISK_REJECT
 GATE_GATEKEEP = GATE_GATEKEEP_REJECT
 GATE_CORRELATION = GATE_CORR_REJECT
+
 
 # Rule Definitions
 class Rules:
@@ -99,7 +100,7 @@ RECOMMENDED_FIELDS = {
 def format_reason_code(
     gate: str,
     rule: str,
-    context: Optional[Dict[str, Any]] = None,
+    context: Optional[dict[str, Any]] = None,
 ) -> str:
     """
     Format a reason code from gate, rule, and context.
@@ -143,7 +144,7 @@ def format_reason_code(
     return "|".join(parts)
 
 
-def parse_reason_code(code: str) -> Dict[str, Any]:
+def parse_reason_code(code: str) -> dict[str, Any]:
     """
     Parse a formatted reason code into components.
 
@@ -274,7 +275,9 @@ def extract_reason_summary(code: str) -> str:
     # Build summary based on rule type
     # NOTE: Percentages stored as fractions (0.02 = 2%), use :.0f format after *100
     if rule == "MAX_LOSS_EXCEEDED":
-        return f"Max loss ${context.get('proposed')} exceeds limit ${context.get('limit')}"
+        return (
+            f"Max loss ${context.get('proposed')} exceeds limit ${context.get('limit')}"
+        )
     elif rule == "SECTOR_CAP":
         sector = context.get("sector", "UNKNOWN")
         used_pct = context.get("used_pct", 0)
@@ -314,7 +317,7 @@ def extract_reason_summary(code: str) -> str:
 
 
 # Legacy reason code detection
-def is_legacy_reason(code: Union[str, dict, list, None]) -> bool:
+def is_legacy_reason(code: str | dict | list | None) -> bool:
     """
     Check if a reason appears to be old free-text format (not structured).
 

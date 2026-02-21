@@ -1,9 +1,10 @@
 """Tests for pipeline journey enrichment on final picks."""
-import pytest
+
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'agent'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
 
 from agent.orchestrator import _build_pipeline_journey, _build_strategy_reasoning
 
@@ -45,13 +46,24 @@ def test_pipeline_journey_all_pass():
 
 
 def test_pipeline_journey_display_strings_are_non_empty():
-    pick = {"symbol": "AAPL", "strategy": "BULL_CALL_SPREAD", "max_loss": 480, "gatekeeper_score": 87}
+    pick = {
+        "symbol": "AAPL",
+        "strategy": "BULL_CALL_SPREAD",
+        "max_loss": 480,
+        "gatekeeper_score": 87,
+    }
     log_context = {
-        "regime": "HIGH", "regime_details": {"iv_rank": 0.78, "annual_vol": 0.45},
-        "blocking_events": [], "event_policy": "PLAY",
-        "max_risk": 1000, "max_sector_pct": 0.25, "max_correlation": 0.70,
-        "gatekeeper_threshold": 70, "max_corr_seen": 0.42,
-        "sector": "Technology", "sector_pct": 0.22,
+        "regime": "HIGH",
+        "regime_details": {"iv_rank": 0.78, "annual_vol": 0.45},
+        "blocking_events": [],
+        "event_policy": "PLAY",
+        "max_risk": 1000,
+        "max_sector_pct": 0.25,
+        "max_correlation": 0.70,
+        "gatekeeper_threshold": 70,
+        "max_corr_seen": 0.42,
+        "sector": "Technology",
+        "sector_pct": 0.22,
     }
     pipeline = _build_pipeline_journey(pick, log_context)
     for stage_name, stage in pipeline.items():

@@ -1,5 +1,5 @@
 """Tests for the UI server /api/scan endpoint."""
-import json
+
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     from ui.server import app
+
     return TestClient(app)
 
 
@@ -17,12 +18,15 @@ class TestScanEndpoint:
 
     def test_scan_success(self, client):
         """Test successful scan returns decision log structure."""
-        resp = client.post("/api/scan", json={
-            "symbol": "AAPL",
-            "start_date": "2026-03-01",
-            "end_date": "2026-04-01",
-            "top_n": 5,
-        })
+        resp = client.post(
+            "/api/scan",
+            json={
+                "symbol": "AAPL",
+                "start_date": "2026-03-01",
+                "end_date": "2026-04-01",
+                "top_n": 5,
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         # Check dashboard response structure
@@ -37,12 +41,15 @@ class TestScanEndpoint:
 
     def test_scan_returns_gate_funnel(self, client):
         """Test that scan returns proper gate funnel data."""
-        resp = client.post("/api/scan", json={
-            "symbol": "NVDA",
-            "start_date": "2026-03-01",
-            "end_date": "2026-06-01",
-            "top_n": 5,
-        })
+        resp = client.post(
+            "/api/scan",
+            json={
+                "symbol": "NVDA",
+                "start_date": "2026-03-01",
+                "end_date": "2026-06-01",
+                "top_n": 5,
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         funnel = data["gateFunnel"]
@@ -107,9 +114,14 @@ class TestMarketSnapshot:
         )
         mock_iv_rank = 0.81
 
-        with patch("ui.server.vol_engine.detect_regime", return_value=mock_regime), \
-             patch("ui.server.vol_engine.calculate_volatility", return_value=mock_vol_result), \
-             patch("ui.server.vol_engine.calculate_iv_rank", return_value=mock_iv_rank):
+        with (
+            patch("ui.server.vol_engine.detect_regime", return_value=mock_regime),
+            patch(
+                "ui.server.vol_engine.calculate_volatility",
+                return_value=mock_vol_result,
+            ),
+            patch("ui.server.vol_engine.calculate_iv_rank", return_value=mock_iv_rank),
+        ):
             resp = client.get("/api/market/snapshot/AAPL")
 
         assert resp.status_code == 200
@@ -134,9 +146,14 @@ class TestMarketSnapshot:
             calculation_date=datetime(2026, 2, 20),
         )
 
-        with patch("ui.server.vol_engine.detect_regime", return_value=VolRegime.MEDIUM), \
-             patch("ui.server.vol_engine.calculate_volatility", return_value=mock_vol_result), \
-             patch("ui.server.vol_engine.calculate_iv_rank", return_value=0.50):
+        with (
+            patch("ui.server.vol_engine.detect_regime", return_value=VolRegime.MEDIUM),
+            patch(
+                "ui.server.vol_engine.calculate_volatility",
+                return_value=mock_vol_result,
+            ),
+            patch("ui.server.vol_engine.calculate_iv_rank", return_value=0.50),
+        ):
             resp = client.get("/api/market/snapshot/SPY")
 
         assert resp.status_code == 200
@@ -146,24 +163,36 @@ class TestMarketSnapshot:
     def test_market_snapshot_change_pct_computed(self, client):
         """change_pct should be computed from yfinance 2-day history."""
         import pandas as pd
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         # Build a 2-row DataFrame mimicking yf.Ticker.history(period="2d")
         mock_history = pd.DataFrame(
-            {"Close": [200.0, 210.0]},
-            index=pd.date_range("2026-02-19", periods=2)
+            {"Close": [200.0, 210.0]}, index=pd.date_range("2026-02-19", periods=2)
         )
         mock_ticker = MagicMock()
         mock_ticker.history.return_value = mock_history
 
-        with patch("ui.server.yf.Ticker", return_value=mock_ticker), \
-             patch("ui.server.market_data.get_current_price", return_value=210.0), \
-             patch("ui.server.market_data.get_liquidity_metrics", side_effect=Exception("skip")), \
-             patch("ui.server.vol_engine.detect_regime", side_effect=Exception("skip")), \
-             patch("ui.server.vol_engine.calculate_volatility", side_effect=Exception("skip")), \
-             patch("ui.server.vol_engine.calculate_iv_rank", side_effect=Exception("skip")), \
-             patch("ui.server.vol_engine.calculate_expected_move", side_effect=Exception("skip")), \
-             patch("ui.server.event_loader.get_blocking_events", return_value=[]):
+        with (
+            patch("ui.server.yf.Ticker", return_value=mock_ticker),
+            patch("ui.server.market_data.get_current_price", return_value=210.0),
+            patch(
+                "ui.server.market_data.get_liquidity_metrics",
+                side_effect=Exception("skip"),
+            ),
+            patch("ui.server.vol_engine.detect_regime", side_effect=Exception("skip")),
+            patch(
+                "ui.server.vol_engine.calculate_volatility",
+                side_effect=Exception("skip"),
+            ),
+            patch(
+                "ui.server.vol_engine.calculate_iv_rank", side_effect=Exception("skip")
+            ),
+            patch(
+                "ui.server.vol_engine.calculate_expected_move",
+                side_effect=Exception("skip"),
+            ),
+            patch("ui.server.event_loader.get_blocking_events", return_value=[]),
+        ):
             resp = client.get("/api/market/snapshot/AAPL")
 
         assert resp.status_code == 200
@@ -216,7 +245,9 @@ class TestEventCalendar:
                 return [mock_earnings_event]
             return []
 
-        with patch("ui.server.event_loader.get_blocking_events", side_effect=mock_get_blocking):
+        with patch(
+            "ui.server.event_loader.get_blocking_events", side_effect=mock_get_blocking
+        ):
             resp = client.get("/api/events/calendar")
 
         assert resp.status_code == 200

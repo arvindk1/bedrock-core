@@ -63,6 +63,7 @@ RULES:
 - Ask for portfolio context if user wants sector/risk correlation checks.
 """
 
+
 def create_agent() -> Agent:
     """Create the phase 2 orchestrated options advisor."""
     model = BedrockModel(
@@ -75,12 +76,16 @@ def create_agent() -> Agent:
         system_prompt=SYSTEM_PROMPT,
     )
 
+
 @app.entrypoint
 async def invoke(payload=None):
     """Main entrypoint for the agent."""
     try:
         if not payload or not isinstance(payload, dict):
-            return {"status": "error", "output": "Invalid payload: expected a JSON object with a 'prompt' key."}
+            return {
+                "status": "error",
+                "output": "Invalid payload: expected a JSON object with a 'prompt' key.",
+            }
 
         prompt = payload.get("prompt") or ""
         if not prompt.strip():
@@ -95,14 +100,19 @@ async def invoke(payload=None):
             text = content
         elif isinstance(content, list) and content:
             block = content[0]
-            text = block.get("text", str(block)) if isinstance(block, dict) else str(block)
+            text = (
+                block.get("text", str(block)) if isinstance(block, dict) else str(block)
+            )
         else:
             text = str(response)
 
         return {"status": "success", "output": text}
     except Exception as e:
         traceback.print_exc()
-        return {"status": "error", "output": f"Agent invocation failed: {type(e).__name__}: {e}"}
+        return {
+            "status": "error",
+            "output": f"Agent invocation failed: {type(e).__name__}: {e}",
+        }
 
 
 if __name__ == "__main__":

@@ -14,9 +14,8 @@ Architecture:
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
-import pandas as pd
 
 from event_loader import EventLoader
 from market_data import MarketData
@@ -35,10 +34,12 @@ class TradeScore:
     total_score: float  # 0-100
     is_approved: bool
     rejection_reason: Optional[str]
-    reason_code: Optional[str] = None  # Structured reason code (GATEKEEP_REJECT|rule=...)
-    warnings: List[str] = None
-    score_breakdown: Dict[str, float] = None
-    details: Dict[str, Any] = None
+    reason_code: Optional[str] = (
+        None  # Structured reason code (GATEKEEP_REJECT|rule=...)
+    )
+    warnings: list[str] = None
+    score_breakdown: dict[str, float] = None
+    details: dict[str, Any] = None
 
     def __post_init__(self):
         if self.warnings is None:
@@ -68,7 +69,7 @@ class ScoredGatekeeper:
         self.market_data = MarketData()
         self.event_loader = EventLoader()
 
-    def check_trade(self, trade_proposal: Dict[str, Any]) -> TradeScore:
+    def check_trade(self, trade_proposal: dict[str, Any]) -> TradeScore:
         """
         Score a proposed trade's viability (liquidity, spreads, regime alignment).
 
@@ -122,11 +123,17 @@ class ScoredGatekeeper:
         # 3. Volatility Regime Alignment (Soft Scoring)
         # ====================================================================
         try:
-            vol_result = self.vol_engine.calculate_volatility(symbol, model=VolatilityModel.HYBRID)
+            vol_result = self.vol_engine.calculate_volatility(
+                symbol, model=VolatilityModel.HYBRID
+            )
             details["volatility"] = vol_result
 
-            is_credit_strategy = any(s in strategy.upper() for s in ["CONDOR", "CREDIT", "SHORT"])
-            is_debit_strategy = any(s in strategy.upper() for s in ["DEBIT", "LONG", "BUY"])
+            is_credit_strategy = any(
+                s in strategy.upper() for s in ["CONDOR", "CREDIT", "SHORT"]
+            )
+            is_debit_strategy = any(
+                s in strategy.upper() for s in ["DEBIT", "LONG", "BUY"]
+            )
 
             iv_annual = vol_result.annual_volatility
 
@@ -205,7 +212,9 @@ class ScoredGatekeeper:
             details=details,
         )
 
-    def _check_liquidity(self, trade_proposal: Dict[str, Any]) -> Tuple[float, Optional[str], float]:
+    def _check_liquidity(
+        self, trade_proposal: dict[str, Any]
+    ) -> tuple[float, Optional[str], float]:
         """
         Check liquidity using Phase-2 spec: min Open Interest as proxy capacity.
 
@@ -286,7 +295,9 @@ class ScoredGatekeeper:
         score = min(100, int(min_oi / 100 * 100))  # Cap at 100
         return score, None, 0
 
-    def _check_spreads(self, trade_proposal: Dict[str, Any]) -> Tuple[bool, Optional[str], float]:
+    def _check_spreads(
+        self, trade_proposal: dict[str, Any]
+    ) -> tuple[bool, Optional[str], float]:
         """
         Check bid/ask spreads using Phase-2 spec: Ask - Bid < max(0.05, 0.01 * Bid).
 
